@@ -1,0 +1,14 @@
+artifact_uri: mlflow-artifacts:/193307890744339456/9adbfbbdb9c6478c8529f78c3247fb88/artifacts
+end_time: 1766768022580
+entry_point_name: ''
+experiment_id: '193307890744339456'
+lifecycle_stage: active
+run_id: 9adbfbbdb9c6478c8529f78c3247fb88
+run_name: lightgbm_v2_registration
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1766768018321
+status: 3
+tags: []
+user_id: dhaya

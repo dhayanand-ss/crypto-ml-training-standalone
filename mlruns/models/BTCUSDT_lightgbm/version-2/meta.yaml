@@ -1,0 +1,15 @@
+creation_timestamp: 1766766514249
+current_stage: None
+deployment_job_state: null
+description: ''
+last_updated_timestamp: 1766766514249
+model_id: m-bcc03ff2f1eb48a3928c023ee0f12d65
+name: BTCUSDT_lightgbm
+run_id: 7757fd19c7694090a9e519d271144238
+run_link: ''
+source: models:/m-bcc03ff2f1eb48a3928c023ee0f12d65
+status: READY
+status_message: null
+storage_location: mlflow-artifacts:/193307890744339456/models/m-bcc03ff2f1eb48a3928c023ee0f12d65/artifacts
+user_id: null
+version: 2

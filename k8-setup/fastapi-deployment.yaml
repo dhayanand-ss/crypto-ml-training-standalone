@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-ml
+  namespace: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-ml
+  template:
+    metadata:
+      labels:
+        app: fastapi-ml
+    spec:
+      containers:
+      - name: fastapi
+        image: fastapi-ml:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: fastapi-port
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: ""  # Empty to skip MLflow connection during startup
+        - name: PORT
+          value: "8000"
+        - name: HOST
+          value: "0.0.0.0"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: fastapi-port
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: fastapi-port
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+

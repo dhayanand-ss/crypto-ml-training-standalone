@@ -1,0 +1,66 @@
+# Helm values for kube-prometheus-stack
+# This configures Prometheus to discover ServiceMonitors across all namespaces
+
+prometheus:
+  prometheusSpec:
+    # Allow Prometheus to discover ServiceMonitors in all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    
+    # Retention policy (adjust based on storage capacity)
+    retention: 15d
+    
+    # Resource limits
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 1000m
+      limits:
+        memory: 4Gi
+        cpu: 2000m
+    
+    # Storage configuration (adjust based on your storage class)
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+grafana:
+  # Grafana configuration
+  adminUser: admin
+  adminPassword: prom-operator
+  
+  # Disable init container (fixes Windows/Docker Desktop chown issue)
+  initChownData:
+    enabled: false
+  
+  # Persistence
+  persistence:
+    enabled: true
+    size: 10Gi
+  
+  # Resources
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 200m
+
+# AlertManager configuration
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: 100Mi
+        cpu: 100m
+      limits:
+        memory: 200Mi
+        cpu: 200m
+
+
+

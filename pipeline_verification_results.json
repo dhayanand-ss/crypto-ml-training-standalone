@@ -1,0 +1,61 @@
+{
+  "components": {
+    "imports": {
+      "trainer.lightgbm_trainer": true,
+      "trainer.time_series_transformer": true,
+      "utils.utils.vast_ai_train": true,
+      "utils.utils.kill_vast_ai_instances": true,
+      "utils.database.status_db": false,
+      "utils.database.airflow_db": false,
+      "models.finbert_sentiment": true
+    },
+    "data_files": {
+      "btcusdt.csv": true,
+      "articles.csv": true
+    },
+    "vast_ai": {
+      "get_vastai_api_key": true,
+      "setup_vastai_cli": true,
+      "create_instance": true,
+      "get_offers": true,
+      "load_blacklist": true,
+      "api_key_set": false
+    },
+    "training": {
+      "lightgbm_trainer": true,
+      "tst_trainer": true,
+      "finbert": true
+    },
+    "version_registry": {
+      "valid_json": true,
+      "has_lightgbm": true,
+      "has_tst": true,
+      "has_finbert": true,
+      "has_ensemble": true,
+      "has_metadata": true,
+      "lightgbm_versions": 3,
+      "tst_versions": 3
+    }
+  },
+  "outputs": {
+    "combined_predictions": true,
+    "sentiment_features": true,
+    "prices_output": true,
+    "trl_output": true,
+    "integrated_analysis": true
+  },
+  "models": {
+    "version_registry": true,
+    "lightgbm_v1": true,
+    "lightgbm_v2": true,
+    "lightgbm_v3": true,
+    "tst_v1": true,
+    "tst_v2": true,
+    "tst_v3": true,
+    "ensemble_model": true
+  },
+  "errors": [
+    "Import error: utils.database.status_db - Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.",
+    "Import error: utils.database.airflow_db - Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information."
+  ]
+}

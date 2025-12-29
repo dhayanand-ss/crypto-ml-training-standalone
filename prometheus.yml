@@ -1,0 +1,43 @@
+# Prometheus configuration for scraping FastAPI metrics
+# This file is used by Prometheus running in Docker Compose
+
+global:
+  scrape_interval: 15s      # How often to scrape targets
+  evaluation_interval: 15s  # How often to evaluate rules
+  external_labels:
+    cluster: 'local'
+    environment: 'development'
+
+# Alerting configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alert_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # FastAPI ML Inference Service
+  - job_name: 'fastapi-ml'
+    static_configs:
+      - targets: ['fastapi-ml:8000']  # Use Docker service name
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Prometheus itself (self-monitoring)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+
+
+
+
+
+
+
+

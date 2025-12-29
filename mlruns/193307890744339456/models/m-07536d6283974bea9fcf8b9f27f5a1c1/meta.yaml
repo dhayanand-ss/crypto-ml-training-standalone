@@ -1,0 +1,10 @@
+artifact_location: mlflow-artifacts:/193307890744339456/models/m-07536d6283974bea9fcf8b9f27f5a1c1/artifacts
+creation_timestamp: 1766768018383
+experiment_id: '193307890744339456'
+last_updated_timestamp: 1766768022431
+model_id: m-07536d6283974bea9fcf8b9f27f5a1c1
+model_type: ''
+name: BTCUSDT_lightgbm
+source_run_id: 9adbfbbdb9c6478c8529f78c3247fb88
+status: 2
+status_message: null

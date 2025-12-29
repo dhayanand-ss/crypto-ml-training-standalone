@@ -1,0 +1,72 @@
+# Google Cloud service account credentials - NEVER commit these!
+*service-account*.json
+*-*.json
+vertex-ai-key.json
+**/credentials.json
+dhaya123-*.json
+*-credentials.json
+*-key.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (optional - uncomment if you don't want to track models)
+# models/*.pkl
+# models/*.pth
+
+# Data files (optional - uncomment if data files are large)
+# data/*.csv
+# data/*.json
+
+# Airflow
+airflow.db
+airflow.cfg
+*.pid
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

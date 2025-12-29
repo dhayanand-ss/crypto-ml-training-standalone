@@ -1,0 +1,10 @@
+artifact_location: mlflow-artifacts:/193307890744339456/models/m-b5120dd9fb34416ba3fc2c838e273d24/artifacts
+creation_timestamp: 1766768030530
+experiment_id: '193307890744339456'
+last_updated_timestamp: 1766768038756
+model_id: m-b5120dd9fb34416ba3fc2c838e273d24
+model_type: ''
+name: BTCUSDT_tst
+source_run_id: 52ce1af838e14219a188e3c2b7cb4fae
+status: 2
+status_message: null

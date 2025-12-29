@@ -1,0 +1,21 @@
+artifact_path: mlflow-artifacts:/193307890744339456/models/m-44edee6ec8284d27b83811cd386e712f/artifacts
+flavors:
+  lightgbm:
+    code: null
+    data: model.lgb
+    lgb_version: 4.6.0
+    model_class: lightgbm.basic.Booster
+  python_function:
+    data: model.lgb
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.lightgbm
+    python_version: 3.13.7
+mlflow_version: 3.6.0
+model_id: m-44edee6ec8284d27b83811cd386e712f
+model_size_bytes: 4491531
+model_uuid: m-44edee6ec8284d27b83811cd386e712f
+prompts: null
+run_id: acfe0340c99b49c5a3c914bd458f8adf
+utc_time_created: '2025-12-26 16:28:34.489410'

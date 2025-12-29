@@ -1,0 +1,15 @@
+creation_timestamp: 1766768038817
+current_stage: Production
+deployment_job_state: null
+description: ''
+last_updated_timestamp: 1766768038897
+model_id: m-b5120dd9fb34416ba3fc2c838e273d24
+name: BTCUSDT_tst
+run_id: 52ce1af838e14219a188e3c2b7cb4fae
+run_link: ''
+source: models:/m-b5120dd9fb34416ba3fc2c838e273d24
+status: READY
+status_message: null
+storage_location: mlflow-artifacts:/193307890744339456/models/m-b5120dd9fb34416ba3fc2c838e273d24/artifacts
+user_id: null
+version: 1
