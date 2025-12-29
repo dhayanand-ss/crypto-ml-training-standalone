@@ -651,28 +651,23 @@ def build_startup_command() -> str:
         ])
     
     # Common steps for all scenarios (optimized for size)
+    # Change to project root once and execute all commands there
+    cmd_parts.append(f"cd {project_root}")
     
     cmd_parts.extend([
-        # Install system dependencies for LightGBM and other packages (including openssh-client to fix SSH error)
+        # Install system dependencies (including openssh-client to fix SSH error)
         "apt-get update && apt-get install -y libgomp1 curl openssh-client || true",
         "pip install wandb || true",
         wandb_login,
-        # Ensure we're in project root and create data directories
-        f"cd {project_root} && pwd && mkdir -p data/prices data/articles",
-        # Download data files if needed (ensure credentials are set first)
-        # Use absolute paths and ensure we're in project root
-        f"cd {project_root} && python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('{project_root}');creds_path='/workspace/gcp-credentials.json';os.environ.setdefault('GOOGLE_APPLICATION_CREDENTIALS',creds_path if os.path.exists(creds_path) else '');os.environ.setdefault('GCP_CREDENTIALS_PATH',creds_path if os.path.exists(creds_path) else '');print('Working directory:',os.getcwd());print('GOOGLE_APPLICATION_CREDENTIALS:',os.getenv('GOOGLE_APPLICATION_CREDENTIALS','Not set'));print('GCP_CREDENTIALS_PATH:',os.getenv('GCP_CREDENTIALS_PATH','Not set'));creds_exist=os.path.exists(creds_path);print('Credentials file exists:',creds_exist);try:from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;print('S3_AVAILABLE:',S3_AVAILABLE);(download_s3_dataset('BTCUSDT',trl_model=False) if S3_AVAILABLE else print('S3 not available'));print('Data download completed');print('Files after download:');import glob;print('  BTCUSDT.csv:',glob.glob('data/prices/BTCUSDT.csv'));print('  btcusdt.csv:',glob.glob('data/btcusdt.csv')) except Exception as e:print('Data download error:',str(e));import traceback;traceback.print_exc()\" 2>&1 || echo 'Data download failed or skipped'",
-        # Copy/create btcusdt.csv from various locations (use absolute paths)
-        f"cd {project_root} && [ -f data/prices/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/BTCUSDT.csv data/btcusdt.csv && echo 'Copied BTCUSDT.csv to btcusdt.csv' || true",
-        f"cd {project_root} && [ -f data/prices/btcusdt.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/btcusdt.csv data/btcusdt.csv && echo 'Copied btcusdt.csv (lowercase)' || true",
-        f"cd {project_root} && [ -f data/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/BTCUSDT.csv data/btcusdt.csv && echo 'Copied BTCUSDT.csv from data/ root' || true",
-        f"cd {project_root} && [ -f data/btcusdt.csv ] && echo 'btcusdt.csv already exists' || true",
-        # Verify data files exist (use absolute paths)
-        f"cd {project_root} && echo 'Data files check (from {project_root}):' && ls -la data/btcusdt.csv 2>/dev/null && echo '✓ btcusdt.csv found' || echo '✗ WARNING: btcusdt.csv missing'",
-        f"cd {project_root} && ls -la data/prices/BTCUSDT.csv 2>/dev/null && echo '✓ BTCUSDT.csv found' || echo '✗ WARNING: BTCUSDT.csv missing'",
-        f"cd {project_root} && echo 'All data files:' && find data -name '*.csv' -type f 2>/dev/null | head -10 || echo 'No CSV files found'",
-        # Start training (ensure we're in project root)
-        f"cd {project_root} && python -m utils.trainer.train_paralelly || (echo 'Training failed. Debug info:' && pwd && ls -la data/ && python -c 'import sys;print(\"\\n\".join(sys.path))' 2>&1 || true)"
+        "mkdir -p data/prices data/articles",
+        # Download data files (simplified - minimal logging to reduce size)
+        f"python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('{project_root}');c='/workspace/gcp-credentials.json';os.environ.setdefault('GOOGLE_APPLICATION_CREDENTIALS',c if os.path.exists(c) else '');os.environ.setdefault('GCP_CREDENTIALS_PATH',c if os.path.exists(c) else '');from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;(download_s3_dataset('BTCUSDT',trl_model=False) if S3_AVAILABLE else None)\" 2>&1 || true",
+        # Copy/create btcusdt.csv from various locations (combined and shortened)
+        "[ -f data/prices/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/BTCUSDT.csv data/btcusdt.csv || true",
+        "[ -f data/prices/btcusdt.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/btcusdt.csv data/btcusdt.csv || true",
+        "[ -f data/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/BTCUSDT.csv data/btcusdt.csv || true",
+        # Start training
+        "python -m utils.trainer.train_paralelly || (pwd && ls -la data/ 2>&1 || true)"
     ])
     
     startup_cmd = " && ".join(cmd_parts)
