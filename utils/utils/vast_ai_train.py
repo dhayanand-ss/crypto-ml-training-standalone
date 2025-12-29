@@ -19,7 +19,9 @@ import subprocess
 import logging
 import pickle
 import tempfile
+import stat
 import re
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from datetime import datetime
@@ -270,6 +272,37 @@ def verify_instance_exists(instance_id: str) -> Optional[Dict]:
         logger.debug(f"Available instance IDs: {[str(i.get('id', '')) for i in instances]}")
         return None
         
+    except subprocess.CalledProcessError as e:
+        # Combine stderr and stdout for error detection
+        error_output = (e.stderr or "") + (e.stdout or "")
+        error_msg = error_output.lower() if error_output else str(e).lower()
+        
+        # Check if instance doesn't exist (various error formats)
+        instance_id_str = str(instance_id)
+        instance_not_found_patterns = [
+            "no such container",
+            "not found",
+            "does not exist",
+            f"c.{instance_id_str}",  # Vast AI internal format like "C.29306163" (case-insensitive)
+            f"c.{instance_id_str.lower()}",  # Lowercase variant
+            f"c.{instance_id_str.upper()}",  # Uppercase variant
+            f"container.*{instance_id_str}",
+            "error response from daemon",  # Docker daemon error prefix
+        ]
+        
+        # Also check if instance ID appears in error with error keywords
+        if instance_id_str in error_output or instance_id_str in str(e):
+            if any(pattern in error_msg for pattern in ["no such", "not found", "does not exist", "error response from daemon"]):
+                logger.warning(f"Instance {instance_id} does not exist (no such container)")
+                return None
+        
+        if any(pattern in error_msg for pattern in instance_not_found_patterns):
+            logger.warning(f"Instance {instance_id} does not exist (no such container)")
+        else:
+            logger.warning(f"Failed to verify instance existence: {e}")
+            if error_output:
+                logger.debug(f"Error details: {error_output[:500]}")
+        return None
     except Exception as e:
         logger.warning(f"Failed to verify instance existence: {e}")
         return None
@@ -341,8 +374,20 @@ def wait_for_pod(instance_id: str, timeout: int = MAX_POD_WAIT) -> bool:
                 cmd,
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=30
             )
+            
+            # Check for error messages in output (even if command succeeded)
+            error_output = (result.stderr or "") + (result.stdout or "")
+            if error_output and ("error response from daemon" in error_output.lower() or 
+                                f"no such container" in error_output.lower() or
+                                f"c.{instance_id}" in error_output.lower()):
+                instance_id_str = str(instance_id)
+                if instance_id_str in error_output:
+                    logger.warning(f"Instance {instance_id} container not found (may still be starting): {error_output[:200]}")
+                    time.sleep(10)
+                    continue
             
             # Parse JSON with error handling
             try:
@@ -350,6 +395,8 @@ def wait_for_pod(instance_id: str, timeout: int = MAX_POD_WAIT) -> bool:
             except json.JSONDecodeError as e:
                 logger.warning(f"Failed to parse instance data JSON: {e}")
                 logger.debug(f"Raw output: {result.stdout[:200]}")
+                if result.stderr:
+                    logger.debug(f"Stderr: {result.stderr[:200]}")
                 time.sleep(10)
                 continue
             
@@ -373,12 +420,48 @@ def wait_for_pod(instance_id: str, timeout: int = MAX_POD_WAIT) -> bool:
             time.sleep(10)  # Check every 10 seconds
             
         except subprocess.CalledProcessError as e:
+            # Combine stderr and stdout for error detection
+            error_output = (e.stderr or "") + (e.stdout or "")
+            error_msg = error_output.lower() if error_output else str(e).lower()
+            
+            # Check if instance doesn't exist (various error formats)
+            # Note: Vast AI uses "C.<instance_id>" format (capital C)
+            instance_not_found_patterns = [
+                "no such container",
+                "not found",
+                "does not exist",
+                f"c.{instance_id}",  # Vast AI internal format like "C.29306163" (case-insensitive match)
+                f"c.{instance_id.lower()}",  # Lowercase variant
+                f"c.{instance_id.upper()}",  # Uppercase variant
+                f"container.*{instance_id}",
+                "error response from daemon",  # Docker daemon error prefix
+            ]
+            
+            # Also check if error contains the instance ID in any format with error keywords
+            instance_id_str = str(instance_id)
+            
+            # First check if instance ID appears in error
+            if instance_id_str in error_output or instance_id_str in str(e):
+                # If instance ID is mentioned in error with "no such" or "error response", it doesn't exist
+                if any(pattern in error_msg for pattern in ["no such", "not found", "does not exist", "error response from daemon"]):
+                    logger.error(f"Instance {instance_id} does not exist. It may have been destroyed or never created.")
+                    logger.debug(f"Error details: {error_output[:500]}")
+                    return False
+            
+            # Check all error patterns
+            if any(pattern in error_msg for pattern in instance_not_found_patterns):
+                logger.error(f"Instance {instance_id} does not exist. It may have been destroyed or never created.")
+                logger.debug(f"Error details: {error_output[:500]}")
+                return False
+            
             # Only log detailed error occasionally to avoid log spam
             elapsed = time.time() - start_time
             if int(elapsed) % 60 == 0:  # Log detailed error every minute
                 logger.warning(f"Failed to check instance status: {e}")
                 if e.stderr:
-                    logger.warning(f"Error output: {e.stderr[:200]}")
+                    logger.warning(f"Error output (stderr): {e.stderr[:200]}")
+                if e.stdout:
+                    logger.warning(f"Error output (stdout): {e.stdout[:200]}")
             else:
                 logger.debug(f"Failed to check instance status (will retry): {e}")
             time.sleep(10)
@@ -418,7 +501,30 @@ def build_startup_command() -> str:
         "DATABASE_URL": os.getenv("DATABASE_URL", ""),
         "TRL_DATABASE_URL": os.getenv("TRL_DATABASE_URL", ""),
         "AIRFLOW_DB": os.getenv("AIRFLOW_DB", ""),
+        # GCP credentials for GCS access
+        "GCP_PROJECT_ID": os.getenv("GCP_PROJECT_ID", ""),
+        "GCP_CREDENTIALS_PATH": "/workspace/gcp-credentials.json",  # Path on instance
     }
+    
+    # Handle GCP credentials - encode and pass as environment variable
+    gcp_credentials_path = os.getenv("GCP_CREDENTIALS_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    gcp_credentials_json = None
+    
+    if gcp_credentials_path and os.path.exists(gcp_credentials_path):
+        try:
+            with open(gcp_credentials_path, 'r') as f:
+                gcp_credentials_json = f.read()
+            logger.info(f"Found GCP credentials file: {gcp_credentials_path}")
+        except Exception as e:
+            logger.warning(f"Could not read GCP credentials file: {e}")
+    elif os.path.exists("dhaya123-335710-039eabaad669.json"):
+        # Try default credential file name
+        try:
+            with open("dhaya123-335710-039eabaad669.json", 'r') as f:
+                gcp_credentials_json = f.read()
+            logger.info("Found default GCP credentials file")
+        except Exception as e:
+            logger.warning(f"Could not read default GCP credentials file: {e}")
     
     # Build export commands
     export_cmds_list = [
@@ -426,6 +532,52 @@ def build_startup_command() -> str:
         for key, value in env_vars.items()
         if value  # Only export non-empty values
     ]
+    
+    # Add GCP credentials setup - upload to GCS and use signed URL to reduce command size
+    gcp_creds_setup = ""
+    if gcp_credentials_json:
+        import json
+        import tempfile
+        import uuid
+        try:
+            # Validate JSON
+            json.loads(gcp_credentials_json)
+            
+            # Upload credentials to GCS and get signed URL (much smaller than embedding)
+            try:
+                from utils.artifact_control.gcs_manager import GCSManager
+                gcs_manager = GCSManager(bucket='mlops-new')
+                
+                # Create temporary file with credentials
+                temp_creds_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+                temp_creds_file.write(gcp_credentials_json)
+                temp_creds_file.close()
+                
+                # Upload to GCS with unique name
+                creds_key = f"vast-ai-credentials/{uuid.uuid4().hex}.json"
+                gcs_manager.upload_file(temp_creds_file.name, creds_key)
+                
+                # Generate signed URL (valid for 2 hours)
+                signed_url = gcs_manager.generate_signed_url(creds_key, expiration_minutes=120)
+                
+                # Clean up temp file
+                os.unlink(temp_creds_file.name)
+                
+                # Use compact download command (much smaller than embedded credentials)
+                gcp_creds_setup = f"mkdir -p /workspace && curl -s '{signed_url}' > /workspace/gcp-credentials.json && chmod 600 /workspace/gcp-credentials.json && export GOOGLE_APPLICATION_CREDENTIALS=/workspace/gcp-credentials.json && export GCP_CREDENTIALS_PATH=/workspace/gcp-credentials.json"
+                logger.info(f"GCP credentials uploaded to GCS. Using signed URL download (command size: ~{len(signed_url) + 150} chars)")
+            except Exception as gcs_error:
+                logger.warning(f"Failed to upload credentials to GCS: {gcs_error}. Falling back to embedded method.")
+                # Fallback to compressed embedding if GCS upload fails
+                import base64
+                import gzip
+                creds_compressed = gzip.compress(gcp_credentials_json.encode())
+                creds_b64 = base64.b64encode(creds_compressed).decode()
+                gcp_creds_setup = f"mkdir -p /workspace && echo '{creds_b64}' | base64 -d | gunzip > /workspace/gcp-credentials.json && chmod 600 /workspace/gcp-credentials.json && export GOOGLE_APPLICATION_CREDENTIALS=/workspace/gcp-credentials.json && export GCP_CREDENTIALS_PATH=/workspace/gcp-credentials.json"
+                logger.warning(f"Using fallback embedded method (compressed size: {len(creds_b64)} chars)")
+        except Exception as e:
+            logger.warning(f"Failed to setup GCP credentials: {e}")
+    
     export_cmds = " && ".join(export_cmds_list) if export_cmds_list else ""
     
     # W&B API key (if available)
@@ -439,6 +591,12 @@ def build_startup_command() -> str:
     if export_cmds:
         cmd_parts.append(export_cmds)
     
+    # Add GCP credentials setup if available
+    if gcp_creds_setup:
+        # Convert multi-line to single line with && separators
+        gcp_creds_lines = [line.strip() for line in gcp_creds_setup.strip().split('\n') if line.strip() and not line.strip().startswith('#')]
+        cmd_parts.extend(gcp_creds_lines)
+    
     # Check if using a custom Docker image (code pre-packaged) or need to clone/upload
     custom_image = os.getenv("VASTAI_DOCKER_IMAGE", "")
     if not custom_image:
@@ -450,7 +608,19 @@ def build_startup_command() -> str:
     default_image = "python:3.10-slim"
     using_custom_image = custom_image != default_image and "/" in custom_image
     
+    # Determine project root directory name (for absolute paths) - do this first
+    if github_repo:
+        repo_name = github_repo.split("/")[-1].replace(".git", "")
+    elif using_custom_image:
+        repo_name = "crypto-ml-training"
+    else:
+        repo_name = "crypto-ml-training-standalone"
+    
+    project_root = f"/workspace/{repo_name}"
+    
+    # Create /workspace directory first (it doesn't exist in base images)
     cmd_parts.extend([
+        "mkdir -p /workspace",
         "cd /workspace",
     ])
     
@@ -463,32 +633,56 @@ def build_startup_command() -> str:
         ])
         logger.info(f"Using custom Docker image {custom_image} - code should be pre-packaged")
     elif github_repo:
-        # Clone from GitHub if repository URL is provided
-        repo_name = github_repo.split("/")[-1].replace(".git", "")
-        cmd_parts.append(f"[ ! -d {repo_name} ] && git clone {github_repo} || true")
-        cmd_parts.append(f"cd {repo_name}")
+        # Clone from GitHub if repository URL is provided (compact version)
         cmd_parts.extend([
+            f"[ ! -d {repo_name} ] && git clone {github_repo} || (sleep 2 && git clone {github_repo}) || true",
+            f"cd {repo_name} || (mkdir -p {repo_name} && cd {repo_name})",
             "pip install --upgrade pip",
-            "pip install -r requirements.txt || echo 'Warning: requirements.txt not found, continuing...'",
+            "[ -f requirements.txt ] && pip install -r requirements.txt || true",
         ])
     else:
         # No GitHub repo and no custom image - create workspace and expect manual upload
-        cmd_parts.append("mkdir -p crypto-ml-training && cd crypto-ml-training")
+        cmd_parts.append(f"mkdir -p {repo_name} && cd {repo_name}")
         logger.warning("No GitHub repository or custom Docker image configured.")
         logger.warning("Code must be uploaded manually via SSH. Set VASTAI_GITHUB_REPO or build a custom Docker image.")
         cmd_parts.extend([
             "pip install --upgrade pip",
-            "pip install -r requirements.txt || echo 'Warning: requirements.txt not found, continuing...'",
+            "if [ -f requirements.txt ]; then pip install -r requirements.txt; else echo 'Warning: requirements.txt not found, continuing...'; fi",
         ])
     
-    # Common steps for all scenarios
+    # Common steps for all scenarios (optimized for size)
+    
     cmd_parts.extend([
-        "pip install wandb || echo 'Warning: wandb installation failed'",
+        # Install system dependencies for LightGBM and other packages (including openssh-client to fix SSH error)
+        "apt-get update && apt-get install -y libgomp1 curl openssh-client || true",
+        "pip install wandb || true",
         wandb_login,
-        "python -m utils.trainer.train_paralelly || echo 'Training module not found. Check code deployment.'"
+        # Ensure we're in project root and create data directories
+        f"cd {project_root} && pwd && mkdir -p data/prices data/articles",
+        # Download data files if needed (ensure credentials are set first)
+        # Use absolute paths and ensure we're in project root
+        f"cd {project_root} && python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('{project_root}');creds_path='/workspace/gcp-credentials.json';os.environ.setdefault('GOOGLE_APPLICATION_CREDENTIALS',creds_path if os.path.exists(creds_path) else '');os.environ.setdefault('GCP_CREDENTIALS_PATH',creds_path if os.path.exists(creds_path) else '');print('Working directory:',os.getcwd());print('GOOGLE_APPLICATION_CREDENTIALS:',os.getenv('GOOGLE_APPLICATION_CREDENTIALS','Not set'));print('GCP_CREDENTIALS_PATH:',os.getenv('GCP_CREDENTIALS_PATH','Not set'));creds_exist=os.path.exists(creds_path);print('Credentials file exists:',creds_exist);try:from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;print('S3_AVAILABLE:',S3_AVAILABLE);(download_s3_dataset('BTCUSDT',trl_model=False) if S3_AVAILABLE else print('S3 not available'));print('Data download completed');print('Files after download:');import glob;print('  BTCUSDT.csv:',glob.glob('data/prices/BTCUSDT.csv'));print('  btcusdt.csv:',glob.glob('data/btcusdt.csv')) except Exception as e:print('Data download error:',str(e));import traceback;traceback.print_exc()\" 2>&1 || echo 'Data download failed or skipped'",
+        # Copy/create btcusdt.csv from various locations (use absolute paths)
+        f"cd {project_root} && [ -f data/prices/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/BTCUSDT.csv data/btcusdt.csv && echo 'Copied BTCUSDT.csv to btcusdt.csv' || true",
+        f"cd {project_root} && [ -f data/prices/btcusdt.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/btcusdt.csv data/btcusdt.csv && echo 'Copied btcusdt.csv (lowercase)' || true",
+        f"cd {project_root} && [ -f data/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/BTCUSDT.csv data/btcusdt.csv && echo 'Copied BTCUSDT.csv from data/ root' || true",
+        f"cd {project_root} && [ -f data/btcusdt.csv ] && echo 'btcusdt.csv already exists' || true",
+        # Verify data files exist (use absolute paths)
+        f"cd {project_root} && echo 'Data files check (from {project_root}):' && ls -la data/btcusdt.csv 2>/dev/null && echo '✓ btcusdt.csv found' || echo '✗ WARNING: btcusdt.csv missing'",
+        f"cd {project_root} && ls -la data/prices/BTCUSDT.csv 2>/dev/null && echo '✓ BTCUSDT.csv found' || echo '✗ WARNING: BTCUSDT.csv missing'",
+        f"cd {project_root} && echo 'All data files:' && find data -name '*.csv' -type f 2>/dev/null | head -10 || echo 'No CSV files found'",
+        # Start training (ensure we're in project root)
+        f"cd {project_root} && python -m utils.trainer.train_paralelly || (echo 'Training failed. Debug info:' && pwd && ls -la data/ && python -c 'import sys;print(\"\\n\".join(sys.path))' 2>&1 || true)"
     ])
     
     startup_cmd = " && ".join(cmd_parts)
+    
+    # Log command length for debugging
+    cmd_length = len(startup_cmd)
+    logger.info(f"Startup command total length: {cmd_length} characters")
+    if cmd_length > 3500:  # Warn if approaching limit
+        logger.warning(f"Startup command is large ({cmd_length} chars). Vast AI limit is 4048 chars.")
+        logger.warning("Consider reducing command size or using alternative credential passing method.")
     
     return startup_cmd
 
@@ -595,13 +789,74 @@ def create_instance(DEBUG: bool = False) -> Optional[str]:
             
             try:
                 # Build startup command
+                logger.info("Building startup command...")
                 onstart_cmd = build_startup_command()
+                logger.info(f"Startup command length: {len(onstart_cmd)} characters")
+                if len(onstart_cmd) > 4000:
+                    logger.error(f"Startup command exceeds Vast AI limit! Length: {len(onstart_cmd)} chars (limit: 4048)")
+                    logger.error("Command preview (first 500 chars):\n{onstart_cmd[:500]}")
+                else:
+                    logger.debug(f"Startup command preview (first 500 chars):\n{onstart_cmd[:500]}")
                 
                 # Vast.ai CLI expects --onstart to be a file path, not a command string
-                # Write the command to a temporary file
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                    f.write(onstart_cmd)
-                    onstart_file = f.name
+                # Write the command to a temporary file with proper encoding and permissions
+                # Use mkstemp for better control over file creation
+                
+                logger.info("Creating temporary startup script file...")
+                fd, onstart_file = tempfile.mkstemp(suffix='.sh', prefix='vastai_onstart_', text=True)
+                logger.debug(f"Temporary file path: {onstart_file}")
+                
+                try:
+                    # Write with UTF-8 encoding
+                    logger.debug("Writing startup command to file...")
+                    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                        bytes_written = f.write(onstart_cmd)
+                        f.flush()
+                        os.fsync(f.fileno())  # Ensure data is written to disk
+                        logger.debug(f"Wrote {bytes_written} bytes to file")
+                    
+                    # Verify file size
+                    file_size = os.path.getsize(onstart_file)
+                    logger.debug(f"File size: {file_size} bytes")
+                    if file_size == 0:
+                        raise ValueError(f"File is empty after write: {onstart_file}")
+                    
+                    # Make file executable and readable
+                    logger.debug("Setting file permissions...")
+                    os.chmod(onstart_file, 0o755)
+                    
+                    # Verify permissions
+                    file_stat = os.stat(onstart_file)
+                    file_mode = stat.filemode(file_stat.st_mode)
+                    logger.debug(f"File permissions: {file_mode} (octal: {oct(file_stat.st_mode)})")
+                    
+                    # Verify file was written correctly
+                    if not os.path.exists(onstart_file):
+                        raise IOError(f"Failed to create temporary file: {onstart_file}")
+                    
+                    # Verify file is readable
+                    try:
+                        with open(onstart_file, 'r', encoding='utf-8') as test_f:
+                            test_content = test_f.read()
+                            if len(test_content) != len(onstart_cmd):
+                                logger.warning(f"File content length mismatch: expected {len(onstart_cmd)}, got {len(test_content)}")
+                            logger.debug(f"File verification: readable, {len(test_content)} characters")
+                    except Exception as e:
+                        logger.error(f"Failed to verify file readability: {e}")
+                        raise
+                    
+                    logger.info(f"Successfully created temporary startup script: {onstart_file}")
+                    logger.debug(f"File details: size={file_size} bytes, mode={file_mode}, exists={os.path.exists(onstart_file)}")
+                except Exception as e:
+                    # Clean up if file creation failed
+                    logger.error(f"Error creating startup script file: {e}", exc_info=True)
+                    try:
+                        if os.path.exists(onstart_file):
+                            os.unlink(onstart_file)
+                            logger.debug(f"Cleaned up failed file: {onstart_file}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"Failed to clean up file: {cleanup_error}")
+                    raise
                 
                 try:
                     # Create instance
@@ -610,26 +865,94 @@ def create_instance(DEBUG: bool = False) -> Optional[str]:
                     logger.info(f"Using Docker image: {image_to_use}")
                     
                     # Vast.ai CLI accepts --onstart for startup commands (as a file path)
+                    # Ensure we use absolute path
+                    onstart_file_abs = os.path.abspath(onstart_file)
+                    if not os.path.exists(onstart_file_abs):
+                        raise IOError(f"Startup script file does not exist: {onstart_file_abs}")
+                    
                     cmd = [
                         "vastai", "create", "instance", str(pod_id),
                         "--image", image_to_use,
-                        "--onstart", onstart_file,
+                        "--onstart", onstart_file_abs,  # Use absolute path
                         "--disk", "30",
                         "--ssh"
                     ]
                     
-                    logger.debug(f"Running command: {' '.join(cmd)}")
+                    # Ensure we use absolute path
+                    onstart_file_abs = os.path.abspath(onstart_file)
+                    logger.debug(f"Using absolute path: {onstart_file_abs}")
+                    if not os.path.exists(onstart_file_abs):
+                        raise IOError(f"Startup script file does not exist: {onstart_file_abs}")
+                    
+                    # Update command with absolute path
+                    cmd = [
+                        "vastai", "create", "instance", str(pod_id),
+                        "--image", image_to_use,
+                        "--onstart", onstart_file_abs,  # Use absolute path
+                        "--disk", "30",
+                        "--ssh"
+                    ]
+                    
+                    logger.info(f"Executing Vast AI instance creation command...")
+                    logger.debug(f"Full command: {' '.join(cmd)}")
+                    logger.debug(f"Startup script file: {onstart_file_abs}")
+                    logger.debug(f"File exists: {os.path.exists(onstart_file_abs)}")
+                    logger.debug(f"File size: {os.path.getsize(onstart_file_abs)} bytes")
+                    logger.debug(f"File readable: {os.access(onstart_file_abs, os.R_OK)}")
+                    logger.debug(f"File executable: {os.access(onstart_file_abs, os.X_OK)}")
+                    
+                    # Verify file is readable before passing to Vast AI
+                    try:
+                        logger.debug("Pre-flight file verification...")
+                        with open(onstart_file_abs, 'r', encoding='utf-8') as f:
+                            content_check = f.read()
+                            if not content_check:
+                                raise ValueError(f"Startup script file is empty: {onstart_file_abs}")
+                            if len(content_check) != len(onstart_cmd):
+                                logger.warning(f"File content length mismatch: expected {len(onstart_cmd)}, got {len(content_check)}")
+                            logger.debug(f"File verification passed: {len(content_check)} bytes, readable")
+                            logger.debug(f"File content preview (first 200 chars):\n{content_check[:200]}")
+                    except Exception as e:
+                        logger.error(f"Pre-flight file verification failed: {e}", exc_info=True)
+                        raise
+                    
+                    logger.info("Calling Vast AI CLI to create instance...")
                     result = subprocess.run(
                         cmd,
                         check=True,
                         capture_output=True,
-                        text=True
+                        text=True,
+                        timeout=120  # 2 minute timeout
                     )
                     
                     # Log full output for debugging
-                    logger.info(f"Command stdout: {result.stdout}")
+                    logger.info("=" * 60)
+                    logger.info("Vast AI Command Output:")
+                    logger.info("=" * 60)
+                    logger.info(f"Return code: {result.returncode}")
+                    logger.info(f"STDOUT ({len(result.stdout)} chars):\n{result.stdout}")
                     if result.stderr:
-                        logger.debug(f"Command stderr: {result.stderr}")
+                        logger.info(f"STDERR ({len(result.stderr)} chars):\n{result.stderr}")
+                    logger.info("=" * 60)
+                    
+                    # Check for docker_build errors in output
+                    output_lower = (result.stdout + (result.stderr or "")).lower()
+                    if "docker_build" in output_lower:
+                        logger.error("=" * 60)
+                        logger.error("DOCKER_BUILD ERROR DETECTED!")
+                        logger.error("=" * 60)
+                        if "error writing dockerfile" in output_lower:
+                            logger.error("Error type: docker_build() error writing dockerfile")
+                        else:
+                            logger.error(f"Error type: docker_build (other): {output_lower}")
+                        logger.error(f"Startup script file: {onstart_file_abs}")
+                        logger.error(f"File exists: {os.path.exists(onstart_file_abs)}")
+                        logger.error(f"File size: {os.path.getsize(onstart_file_abs)} bytes")
+                        logger.error(f"File permissions: {stat.filemode(os.stat(onstart_file_abs).st_mode)}")
+                        logger.error(f"Startup command length: {len(onstart_cmd)} characters")
+                        logger.error(f"Startup script content (first 1000 chars):\n{onstart_cmd[:1000]}")
+                        logger.error("=" * 60)
+                        raise RuntimeError(f"Vast AI docker_build error - startup script file issue. File: {onstart_file_abs}, Size: {os.path.getsize(onstart_file_abs)} bytes")
                 finally:
                     # Clean up temporary file
                     try:

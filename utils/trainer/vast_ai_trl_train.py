@@ -114,10 +114,13 @@ def build_trl_startup_command(
         cmd_parts.append(export_cmds)
     
     cmd_parts.extend([
+        # Install openssh-client to fix SSH error from Vast AI's .launch script
+        "apt-get update && apt-get install -y openssh-client || true",
         "cd /workspace",
         "[ ! -d crypto-ml-training-standalone ] && git clone https://github.com/dhayanand-ss/crypto-ml-training-standalone.git crypto-ml-training-standalone || true",
         "cd crypto-ml-training-standalone",
         "pip install -q -r requirements.txt",
+        "mkdir -p data/prices data/articles",
     ])
     
     if use_wandb:
