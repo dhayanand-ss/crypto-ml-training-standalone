@@ -47,9 +47,23 @@ Thumbs.db
 # models/*.pkl
 # models/*.pth
 
-# Data files (optional - uncomment if data files are large)
-# data/*.csv
-# data/*.json
+# Data files (large files - exclude from Git)
+data/*.csv
+data/prices/*.csv
+data/articles.csv
+
+# Large model files
+models/**/*.pth
+models/**/*.pkl
+!models/version_registry.json
+!models/finbert/tokenizer/
+!models/lightgbm/*/lgb_model.txt
+!models/tst/*/tst_scaler.pkl
+
+# Large result files
+results/*.json
+results/*.csv
+results/*.png
 
 # Airflow
 airflow.db
