@@ -6,6 +6,9 @@ vertex-ai-key.json
 dhaya123-*.json
 *-credentials.json
 *-key.json
+# GCP credentials (specific patterns)
+*335710*.json
+*039eabaad669*.json
 
 # Python
 __pycache__/
