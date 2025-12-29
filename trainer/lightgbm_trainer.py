@@ -25,6 +25,18 @@ except ImportError:
     TRAIN_UTILS_AVAILABLE = False
     print("Warning: train_utils not available. Some features will be disabled.")
 
+# Import status database for Airflow monitoring
+try:
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(project_root))
+    from utils.database.airflow_db import db
+    STATUS_DB_AVAILABLE = True
+except ImportError:
+    STATUS_DB_AVAILABLE = False
+    print("Warning: airflow_db not available. Status updates will be skipped.")
+
 class LightGBMTrainer:
     """LightGBM trainer for cryptocurrency prediction"""
     
@@ -534,6 +546,16 @@ class LightGBMTrainer:
 
 def main():
     """Main function to demonstrate LightGBM training"""
+    # Update status to RUNNING when training starts
+    model = "lightgbm"
+    coin = "BTCUSDT"  # Hardcoded in this script
+    if STATUS_DB_AVAILABLE:
+        try:
+            db.set_state(model=model, coin=coin, state="RUNNING")
+            print(f"[STATUS] Updated {model}_{coin} status to RUNNING")
+        except Exception as e:
+            print(f"Warning: Failed to update status to RUNNING: {e}")
+    
     print("=" * 60)
     print("LightGBM Training")
     print("=" * 60)
@@ -541,9 +563,17 @@ def main():
     # Load data
     crypto_path = "data/btcusdt.csv"
     if not os.path.exists(crypto_path):
-        print(f"Error: Crypto data not found at {crypto_path}")
+        error_msg = f"Crypto data not found at {crypto_path}"
+        print(f"Error: {error_msg}")
         print("Please fetch price data using data_fetcher.py")
         print("Example: python data_fetcher.py --symbol BTCUSDT --interval 1h --start-date 2024-01-01")
+        # Update status to FAILED
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message=error_msg)
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as e:
+                print(f"Warning: Failed to update status: {e}")
         return
     
     crypto_df = pd.read_csv(crypto_path)
@@ -562,17 +592,39 @@ def main():
     X, y, feature_cols = trainer.prepare_features(crypto_df, sentiment_df)
     
     # Train model
-    X_test, y_test, y_pred, y_pred_proba, accuracy = trainer.train(X, y)
-    
-    # Plot feature importance
-    trainer.plot_feature_importance(top_n=15, save_path="results/lgb_feature_importance.png")
-    
-    # Save model
-    os.makedirs("models", exist_ok=True)
-    trainer.save_model("models/lgb_model.txt")
-    
-    print("\nLightGBM training completed!")
-    print("Model saved to models/lgb_model.txt")
+    try:
+        X_test, y_test, y_pred, y_pred_proba, accuracy = trainer.train(X, y)
+        
+        # Plot feature importance
+        trainer.plot_feature_importance(top_n=15, save_path="results/lgb_feature_importance.png")
+        
+        # Save model
+        os.makedirs("models", exist_ok=True)
+        trainer.save_model("models/lgb_model.txt")
+        
+        print("\nLightGBM training completed!")
+        print("Model saved to models/lgb_model.txt")
+        
+        # Update status to SUCCESS on completion
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="SUCCESS")
+                print(f"[STATUS] Updated {model}_{coin} status to SUCCESS")
+            except Exception as e:
+                print(f"Warning: Failed to update status to SUCCESS: {e}")
+    except Exception as e:
+        error_msg = str(e)
+        print(f"\nError during training: {e}")
+        import traceback
+        traceback.print_exc()
+        # Update status to FAILED on error
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message=error_msg)
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as update_error:
+                print(f"Warning: Failed to update status: {update_error}")
+        raise
 
 if __name__ == "__main__":
     main()

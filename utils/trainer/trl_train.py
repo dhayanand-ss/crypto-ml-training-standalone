@@ -19,6 +19,14 @@ sys.path.insert(0, str(project_root))
 from models.finbert_sentiment import FinBERTSentimentAnalyzer
 import time
 
+# Import status database for Airflow monitoring
+try:
+    from utils.database.airflow_db import db
+    STATUS_DB_AVAILABLE = True
+except ImportError:
+    STATUS_DB_AVAILABLE = False
+    print("Warning: airflow_db not available. Status updates will be skipped.")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -108,6 +116,16 @@ Examples:
     # Set default prices path if not provided
     if args.prices_path is None:
         args.prices_path = f"data/{args.coin.lower()}.csv"
+    
+    # Update status to RUNNING when training starts
+    model = "trl"
+    coin = "ALL"  # TRL model uses "ALL" for coin
+    if STATUS_DB_AVAILABLE:
+        try:
+            db.set_state(model=model, coin=coin, state="RUNNING")
+            print(f"[STATUS] Updated {model}_{coin} status to RUNNING")
+        except Exception as e:
+            print(f"Warning: Failed to update status to RUNNING: {e}")
     
     print("=" * 60)
     print("TRL GRPO Training")
@@ -208,11 +226,26 @@ Examples:
         
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")
+        # Update status to FAILED on interruption
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message="Training interrupted by user")
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as e:
+                print(f"Warning: Failed to update status: {e}")
         sys.exit(1)
     except Exception as e:
+        error_msg = str(e)
         print(f"\nError during training: {e}")
         import traceback
         traceback.print_exc()
+        # Update status to FAILED on error
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message=error_msg)
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as update_error:
+                print(f"Warning: Failed to update status: {update_error}")
         sys.exit(1)
     
     # Save model
@@ -241,6 +274,14 @@ Examples:
     print(f"Total Training Time: {time.time() - start_time:.1f}s")
     print("=" * 60)
     print("Training completed successfully!")
+    
+    # Update status to SUCCESS on completion
+    if STATUS_DB_AVAILABLE:
+        try:
+            db.set_state(model=model, coin=coin, state="SUCCESS")
+            print(f"[STATUS] Updated {model}_{coin} status to SUCCESS")
+        except Exception as e:
+            print(f"Warning: Failed to update status to SUCCESS: {e}")
 
 
 if __name__ == "__main__":

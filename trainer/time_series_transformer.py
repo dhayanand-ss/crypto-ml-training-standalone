@@ -28,6 +28,18 @@ except ImportError:
     TRAIN_UTILS_AVAILABLE = False
     print("Warning: train_utils not available. Some features will be disabled.")
 
+# Import status database for Airflow monitoring
+try:
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(project_root))
+    from utils.database.airflow_db import db
+    STATUS_DB_AVAILABLE = True
+except ImportError:
+    STATUS_DB_AVAILABLE = False
+    print("Warning: airflow_db not available. Status updates will be skipped.")
+
 class TimeSeriesDataset(Dataset):
     """Dataset for time series data"""
     
@@ -575,6 +587,16 @@ class TimeSeriesTransformerTrainer:
 
 def main():
     """Main function to demonstrate Time Series Transformer"""
+    # Update status to RUNNING when training starts
+    model = "tst"
+    coin = "BTCUSDT"  # Hardcoded in this script
+    if STATUS_DB_AVAILABLE:
+        try:
+            db.set_state(model=model, coin=coin, state="RUNNING")
+            print(f"[STATUS] Updated {model}_{coin} status to RUNNING")
+        except Exception as e:
+            print(f"Warning: Failed to update status to RUNNING: {e}")
+    
     print("=" * 60)
     print("Time Series Transformer Training")
     print("=" * 60)
@@ -582,9 +604,17 @@ def main():
     # Load crypto data
     crypto_path = "data/btcusdt.csv"
     if not os.path.exists(crypto_path):
-        print(f"Error: Crypto data not found at {crypto_path}")
+        error_msg = f"Crypto data not found at {crypto_path}"
+        print(f"Error: {error_msg}")
         print("Please fetch price data using data_fetcher.py")
         print("Example: python data_fetcher.py --symbol BTCUSDT --interval 1h --start-date 2024-01-01")
+        # Update status to FAILED
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message=error_msg)
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as e:
+                print(f"Warning: Failed to update status: {e}")
         return
     
     crypto_df = pd.read_csv(crypto_path)
@@ -624,19 +654,41 @@ def main():
     y_train = y_train[:-val_size]
     
     # Train model with reduced epochs and batch size for faster CPU training
-    trainer.train(X_train, y_train, X_val, y_val, epochs=2, batch_size=16)
-    
-    # Evaluate model
-    predictions, metrics = trainer.evaluate(X_test, y_test)
-    
-    # Plot training history
-    trainer.plot_training_history()
-    
-    # Model is already saved with versioning in train() method
-    # No need to save again here - versioning handles it automatically
-    
-    print("\nTime Series Transformer training completed!")
-    print("Model saved with versioning to models/tst/v1/, v2/, v3/")
+    try:
+        trainer.train(X_train, y_train, X_val, y_val, epochs=2, batch_size=16)
+        
+        # Evaluate model
+        predictions, metrics = trainer.evaluate(X_test, y_test)
+        
+        # Plot training history
+        trainer.plot_training_history()
+        
+        # Model is already saved with versioning in train() method
+        # No need to save again here - versioning handles it automatically
+        
+        print("\nTime Series Transformer training completed!")
+        print("Model saved with versioning to models/tst/v1/, v2/, v3/")
+        
+        # Update status to SUCCESS on completion
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="SUCCESS")
+                print(f"[STATUS] Updated {model}_{coin} status to SUCCESS")
+            except Exception as e:
+                print(f"Warning: Failed to update status to SUCCESS: {e}")
+    except Exception as e:
+        error_msg = str(e)
+        print(f"\nError during training: {e}")
+        import traceback
+        traceback.print_exc()
+        # Update status to FAILED on error
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message=error_msg)
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as update_error:
+                print(f"Warning: Failed to update status: {update_error}")
+        raise
 
 if __name__ == "__main__":
     main()
