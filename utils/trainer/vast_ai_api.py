@@ -227,6 +227,12 @@ def run_trl_training_vast_ai_api(
         "cd crypto-ml-training-standalone",
         "pip install -q -r requirements.txt",
         "mkdir -p data/prices data/articles",
+        # Download data files
+        f"python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('/workspace/crypto-ml-training-standalone');c='/workspace/gcp-credentials.json';os.environ.setdefault('GOOGLE_APPLICATION_CREDENTIALS',c if os.path.exists(c) else '');os.environ.setdefault('GCP_CREDENTIALS_PATH',c if os.path.exists(c) else '');from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;(download_s3_dataset('{coin}',trl_model=True) if S3_AVAILABLE else None)\" 2>&1 || true",
+        # Copy/create btcusdt.csv from various locations
+        f"[ -f data/prices/{coin}.csv ] && [ ! -f {prices_path} ] && cp data/prices/{coin}.csv {prices_path} || true",
+        f"[ -f data/prices/{coin.lower()}.csv ] && [ ! -f {prices_path} ] && cp data/prices/{coin.lower()}.csv {prices_path} || true",
+        f"[ -f data/{coin}.csv ] && [ ! -f {prices_path} ] && cp data/{coin}.csv {prices_path} || true",
     ])
     
     if use_wandb:
