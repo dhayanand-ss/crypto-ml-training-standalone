@@ -530,14 +530,18 @@ def build_startup_command() -> str:
                 logger.info(f"Found GCP credentials file: {gcp_credentials_path}")
             except Exception as e:
                 logger.warning(f"Could not read GCP credentials file: {e}")
-        elif os.path.exists("dhaya123-335710-039eabaad669.json"):
-            # Try default credential file name (fallback)
-            try:
-                with open("dhaya123-335710-039eabaad669.json", 'r') as f:
-                    gcp_credentials_json = f.read()
-                logger.info("Found default GCP credentials file")
-            except Exception as e:
-                logger.warning(f"Could not read default GCP credentials file: {e}")
+        else:
+            # Try default credential file name in project root (fallback)
+            # Find project root relative to this script's location
+            script_dir = Path(__file__).parent.parent.parent.resolve()  # Go up from utils/utils/ to project root
+            default_cred_file = script_dir / "dhaya123-335710-039eabaad669.json"
+            if default_cred_file.exists():
+                try:
+                    with open(default_cred_file, 'r') as f:
+                        gcp_credentials_json = f.read()
+                    logger.info(f"Found default GCP credentials file at: {default_cred_file}")
+                except Exception as e:
+                    logger.warning(f"Could not read default GCP credentials file at {default_cred_file}: {e}")
     
     # Build export commands
     export_cmds_list = [
@@ -606,8 +610,9 @@ def build_startup_command() -> str:
     cmd_parts = ["set -e"]
     
     # Install openssh-client FIRST to prevent SSH errors from Vast AI's .launch script
+    # Also install curl for downloading GCP credentials
     # This must be the very first command to run
-    cmd_parts.append("apt-get update && apt-get install -y openssh-client 2>&1 || true")
+    cmd_parts.append("apt-get update && apt-get install -y openssh-client curl 2>&1 || true")
     
     if export_cmds:
         cmd_parts.append(export_cmds)
