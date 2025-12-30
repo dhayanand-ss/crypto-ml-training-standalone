@@ -569,12 +569,16 @@ def build_startup_command() -> str:
             except Exception as gcs_error:
                 logger.warning(f"Failed to upload credentials to GCS: {gcs_error}. Falling back to embedded method.")
                 # Fallback to compressed embedding if GCS upload fails
+                # Use more aggressive compression and shorter command
                 import base64
                 import gzip
-                creds_compressed = gzip.compress(gcp_credentials_json.encode())
+                creds_compressed = gzip.compress(gcp_credentials_json.encode(), compresslevel=9)
                 creds_b64 = base64.b64encode(creds_compressed).decode()
-                gcp_creds_setup = f"mkdir -p /workspace && echo '{creds_b64}' | base64 -d | gunzip > /workspace/gcp-credentials.json && chmod 600 /workspace/gcp-credentials.json && export GOOGLE_APPLICATION_CREDENTIALS=/workspace/gcp-credentials.json && export GCP_CREDENTIALS_PATH=/workspace/gcp-credentials.json"
+                # Ultra-compact command - minimal spacing and combined exports
+                gcp_creds_setup = f"mkdir -p /workspace&&echo '{creds_b64}'|base64 -d|gunzip>/workspace/gcp-credentials.json&&chmod 600 /workspace/gcp-credentials.json&&export GOOGLE_APPLICATION_CREDENTIALS=/workspace/gcp-credentials.json GCP_CREDENTIALS_PATH=/workspace/gcp-credentials.json"
                 logger.warning(f"Using fallback embedded method (compressed size: {len(creds_b64)} chars)")
+                if len(creds_b64) + len(gcp_creds_setup) > 2000:
+                    logger.error(f"WARNING: Embedded credentials are very large ({len(creds_b64)} chars). Command may exceed Vast AI limit!")
         except Exception as e:
             logger.warning(f"Failed to setup GCP credentials: {e}")
     
@@ -600,11 +604,12 @@ def build_startup_command() -> str:
         # Convert multi-line to single line with && separators
         gcp_creds_lines = [line.strip() for line in gcp_creds_setup.strip().split('\n') if line.strip() and not line.strip().startswith('#')]
         cmd_parts.extend(gcp_creds_lines)
-        # Verify credentials file exists and export GCP_PROJECT_ID
+        # Verify credentials and export GCP_PROJECT_ID - combined
         gcp_project_id = os.getenv("GCP_PROJECT_ID", "")
         if gcp_project_id:
-            cmd_parts.append(f"export GCP_PROJECT_ID='{gcp_project_id}'")
-        cmd_parts.append("[ -f /workspace/gcp-credentials.json ] || (echo 'ERROR: GCP credentials file not found after download' && exit 1)")
+            cmd_parts.append(f"[ -f /workspace/gcp-credentials.json ] && export GCP_PROJECT_ID='{gcp_project_id}' || exit 1")
+        else:
+            cmd_parts.append("[ -f /workspace/gcp-credentials.json ] || exit 1")
     
     # Check if using a custom Docker image (code pre-packaged) or need to clone/upload
     custom_image = os.getenv("VASTAI_DOCKER_IMAGE", "")
@@ -643,15 +648,12 @@ def build_startup_command() -> str:
         ])
         logger.info(f"Using custom Docker image {custom_image} - code should be pre-packaged")
     elif github_repo:
-        # Clone from GitHub if repository URL is provided
-        # Ensure we're in /workspace and clone there with robust error handling
+        # Clone from GitHub - shortened commands
         cmd_parts.extend([
-            f"cd /workspace",
-            f"if [ ! -d {repo_name} ]; then git clone {github_repo} {repo_name} || (sleep 3 && git clone {github_repo} {repo_name}) || (sleep 5 && git clone {github_repo} {repo_name}); fi",
-            f"if [ ! -d {project_root} ]; then echo 'ERROR: Repository directory {project_root} does not exist after clone attempt' && ls -la /workspace && exit 1; fi",
-            f"cd {project_root} || (echo 'ERROR: Cannot cd to {project_root}' && pwd && ls -la /workspace && exit 1)",
-            "pip install --upgrade pip",
-            "[ -f requirements.txt ] && pip install -r requirements.txt || true",
+            f"cd /workspace && ([ -d {repo_name} ] || git clone {github_repo} {repo_name} || sleep 3 && git clone {github_repo} {repo_name})",
+            f"[ -d {project_root} ] || (echo 'ERROR: {project_root} missing' && exit 1)",
+            f"cd {project_root} || exit 1",
+            "pip install -U pip && [ -f requirements.txt ] && pip install -q -r requirements.txt || true",
         ])
     else:
         # No GitHub repo and no custom image - create workspace and expect manual upload
@@ -665,27 +667,22 @@ def build_startup_command() -> str:
             "if [ -f requirements.txt ]; then pip install -r requirements.txt; else echo 'Warning: requirements.txt not found, continuing...'; fi",
         ])
     
-    # Common steps for all scenarios (optimized for size)
-    # We should already be in project root from above, but ensure we are
+    # Common steps - already in project root from above
     cmd_parts.extend([
-        f"cd {project_root} || (echo 'ERROR: Cannot cd to {project_root}' && pwd && ls -la /workspace && exit 1)",
-        # Verify we're in the right directory
-        "[ -f requirements.txt ] || [ -d utils ] || (echo 'ERROR: Not in project root - missing requirements.txt or utils/' && pwd && ls -la && exit 1)",
-        # Install remaining system dependencies
+        f"cd {project_root} || exit 1",
+        "[ -f requirements.txt ] || [ -d utils ] || exit 1",
         "apt-get install -y libgomp1 curl || true",
-        "pip install wandb || true",
+        "pip install -q wandb || true",
         wandb_login,
         "mkdir -p data/prices data/articles",
-        # Download data files - ensure credentials are set and verify download
-        f"python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('{project_root}');c='/workspace/gcp-credentials.json';os.environ['GOOGLE_APPLICATION_CREDENTIALS']=c;os.environ['GCP_CREDENTIALS_PATH']=c;gcp_proj=os.getenv('GCP_PROJECT_ID','');os.environ.setdefault('GCP_PROJECT_ID',gcp_proj);creds_exist=os.path.exists(c);print('Creds exist:',creds_exist,'GCP_PROJECT_ID:',gcp_proj);from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;print('S3_AVAILABLE:',S3_AVAILABLE);(download_s3_dataset('BTCUSDT',trl_model=False) if S3_AVAILABLE and creds_exist else print('Skip: S3='+str(S3_AVAILABLE)+', creds='+str(creds_exist)))\" 2>&1 || echo 'Data download failed'",
-        # Copy/create btcusdt.csv from various locations (combined and shortened)
-        "[ -f data/prices/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/BTCUSDT.csv data/btcusdt.csv || true",
-        "[ -f data/prices/btcusdt.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/btcusdt.csv data/btcusdt.csv || true",
-        "[ -f data/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/BTCUSDT.csv data/btcusdt.csv || true",
-        # Verify critical files exist before training (fail fast if missing)
-        "[ -f data/btcusdt.csv ] || [ -f data/prices/BTCUSDT.csv ] || (echo 'ERROR: Required data file not found - neither data/btcusdt.csv nor data/prices/BTCUSDT.csv exists' && ls -la data/ && ls -la data/prices/ 2>&1 && exit 1)",
+        # Download data - ultra-compact
+        f"python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('{project_root}');c='/workspace/gcp-credentials.json';os.environ.update({{'GOOGLE_APPLICATION_CREDENTIALS':c,'GCP_CREDENTIALS_PATH':c}});os.environ.setdefault('GCP_PROJECT_ID',os.getenv('GCP_PROJECT_ID',''));from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;S3_AVAILABLE and os.path.exists(c) and download_s3_dataset('BTCUSDT',False)\" 2>&1 || true",
+        # Copy files - shortened
+        "[ -f data/prices/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/BTCUSDT.csv data/btcusdt.csv || [ -f data/prices/btcusdt.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/btcusdt.csv data/btcusdt.csv || [ -f data/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/BTCUSDT.csv data/btcusdt.csv || true",
+        # Verify files
+        "[ -f data/btcusdt.csv ] || [ -f data/prices/BTCUSDT.csv ] || (echo 'ERROR: No data file' && exit 1)",
         # Start training
-        "python -m utils.trainer.train_paralelly || (echo 'Training failed' && pwd && ls -la data/ 2>&1 || true)"
+        "python -m utils.trainer.train_paralelly || true"
     ])
     
     startup_cmd = " && ".join(cmd_parts)
@@ -693,6 +690,16 @@ def build_startup_command() -> str:
     # Log command length for debugging
     cmd_length = len(startup_cmd)
     logger.info(f"Startup command total length: {cmd_length} characters")
+    
+    # Check if command exceeds limit
+    if cmd_length > 4048:
+        logger.error(f"Startup command exceeds Vast AI limit! Length: {cmd_length} chars (limit: 4048)")
+        logger.error("This usually happens when GCS upload fails and fallback embedded credentials are used.")
+        logger.error("In production (Airflow), GCS upload should work, so signed URL method will be used (much smaller).")
+        logger.error("If this error persists in production, check GCP credentials configuration.")
+        # Still return the command - let Vast AI reject it with a clear error
+        # This is better than silently failing later
+    
     if cmd_length > 3500:  # Warn if approaching limit
         logger.warning(f"Startup command is large ({cmd_length} chars). Vast AI limit is 4048 chars.")
         logger.warning("Consider reducing command size or using alternative credential passing method.")
