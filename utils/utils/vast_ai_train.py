@@ -619,7 +619,9 @@ def build_startup_command() -> str:
     project_root = f"/workspace/{repo_name}"
     
     # Create /workspace directory first (it doesn't exist in base images)
+    # Install openssh-client early to fix SSH errors from Vast AI's .launch script
     cmd_parts.extend([
+        "apt-get update && apt-get install -y openssh-client || true",
         "mkdir -p /workspace",
         "cd /workspace",
     ])
@@ -633,16 +635,19 @@ def build_startup_command() -> str:
         ])
         logger.info(f"Using custom Docker image {custom_image} - code should be pre-packaged")
     elif github_repo:
-        # Clone from GitHub if repository URL is provided (compact version)
+        # Clone from GitHub if repository URL is provided
+        # Ensure we're in /workspace and clone there
         cmd_parts.extend([
-            f"[ ! -d {repo_name} ] && git clone {github_repo} || (sleep 2 && git clone {github_repo}) || true",
-            f"cd {repo_name} || (mkdir -p {repo_name} && cd {repo_name})",
+            f"cd /workspace && ([ -d {repo_name} ] || git clone {github_repo} {repo_name} || (sleep 2 && git clone {github_repo} {repo_name}))",
+            f"cd {project_root} || (echo 'Failed to cd to {project_root}' && pwd && ls -la /workspace && exit 1)",
             "pip install --upgrade pip",
             "[ -f requirements.txt ] && pip install -r requirements.txt || true",
         ])
     else:
         # No GitHub repo and no custom image - create workspace and expect manual upload
-        cmd_parts.append(f"mkdir -p {repo_name} && cd {repo_name}")
+        cmd_parts.extend([
+            f"cd /workspace && mkdir -p {repo_name} && cd {repo_name}",
+        ])
         logger.warning("No GitHub repository or custom Docker image configured.")
         logger.warning("Code must be uploaded manually via SSH. Set VASTAI_GITHUB_REPO or build a custom Docker image.")
         cmd_parts.extend([
@@ -651,12 +656,11 @@ def build_startup_command() -> str:
         ])
     
     # Common steps for all scenarios (optimized for size)
-    # Change to project root once and execute all commands there
-    cmd_parts.append(f"cd {project_root}")
-    
+    # We should already be in project root from above, but ensure we are
     cmd_parts.extend([
-        # Install system dependencies (including openssh-client to fix SSH error)
-        "apt-get update && apt-get install -y libgomp1 curl openssh-client || true",
+        f"cd {project_root} || (echo 'ERROR: Cannot cd to {project_root}' && pwd && ls -la /workspace && exit 1)",
+        # Install remaining system dependencies
+        "apt-get install -y libgomp1 curl || true",
         "pip install wandb || true",
         wandb_login,
         "mkdir -p data/prices data/articles",
