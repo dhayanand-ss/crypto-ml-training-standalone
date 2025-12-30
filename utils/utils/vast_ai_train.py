@@ -636,10 +636,12 @@ def build_startup_command() -> str:
         logger.info(f"Using custom Docker image {custom_image} - code should be pre-packaged")
     elif github_repo:
         # Clone from GitHub if repository URL is provided
-        # Ensure we're in /workspace and clone there
+        # Ensure we're in /workspace and clone there with robust error handling
         cmd_parts.extend([
-            f"cd /workspace && ([ -d {repo_name} ] || git clone {github_repo} {repo_name} || (sleep 2 && git clone {github_repo} {repo_name}))",
-            f"cd {project_root} || (echo 'Failed to cd to {project_root}' && pwd && ls -la /workspace && exit 1)",
+            f"cd /workspace",
+            f"if [ ! -d {repo_name} ]; then git clone {github_repo} {repo_name} || (sleep 3 && git clone {github_repo} {repo_name}) || (sleep 5 && git clone {github_repo} {repo_name}); fi",
+            f"if [ ! -d {project_root} ]; then echo 'ERROR: Repository directory {project_root} does not exist after clone attempt' && ls -la /workspace && exit 1; fi",
+            f"cd {project_root} || (echo 'ERROR: Cannot cd to {project_root}' && pwd && ls -la /workspace && exit 1)",
             "pip install --upgrade pip",
             "[ -f requirements.txt ] && pip install -r requirements.txt || true",
         ])
@@ -659,6 +661,8 @@ def build_startup_command() -> str:
     # We should already be in project root from above, but ensure we are
     cmd_parts.extend([
         f"cd {project_root} || (echo 'ERROR: Cannot cd to {project_root}' && pwd && ls -la /workspace && exit 1)",
+        # Verify we're in the right directory
+        "[ -f requirements.txt ] || [ -d utils ] || (echo 'ERROR: Not in project root - missing requirements.txt or utils/' && pwd && ls -la && exit 1)",
         # Install remaining system dependencies
         "apt-get install -y libgomp1 curl || true",
         "pip install wandb || true",
@@ -670,8 +674,10 @@ def build_startup_command() -> str:
         "[ -f data/prices/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/BTCUSDT.csv data/btcusdt.csv || true",
         "[ -f data/prices/btcusdt.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/btcusdt.csv data/btcusdt.csv || true",
         "[ -f data/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/BTCUSDT.csv data/btcusdt.csv || true",
+        # Verify critical files exist before training (fail fast if missing)
+        "[ -f data/btcusdt.csv ] || [ -f data/prices/BTCUSDT.csv ] || (echo 'ERROR: Required data file not found - neither data/btcusdt.csv nor data/prices/BTCUSDT.csv exists' && ls -la data/ && ls -la data/prices/ 2>&1 && exit 1)",
         # Start training
-        "python -m utils.trainer.train_paralelly || (pwd && ls -la data/ 2>&1 || true)"
+        "python -m utils.trainer.train_paralelly || (echo 'Training failed' && pwd && ls -la data/ 2>&1 || true)"
     ])
     
     startup_cmd = " && ".join(cmd_parts)
