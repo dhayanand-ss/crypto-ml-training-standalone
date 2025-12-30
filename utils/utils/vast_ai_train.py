@@ -506,25 +506,38 @@ def build_startup_command() -> str:
         "GCP_CREDENTIALS_PATH": "/workspace/gcp-credentials.json",  # Path on instance
     }
     
-    # Handle GCP credentials - encode and pass as environment variable
-    gcp_credentials_path = os.getenv("GCP_CREDENTIALS_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    # Handle GCP credentials - Priority 1: Embedded JSON, Priority 2: File path
     gcp_credentials_json = None
     
-    if gcp_credentials_path and os.path.exists(gcp_credentials_path):
+    # Priority 1: Check for embedded JSON credentials (avoids file path issues)
+    gcp_credentials_json_str = os.getenv("GCP_CREDENTIALS_JSON")
+    if gcp_credentials_json_str:
         try:
-            with open(gcp_credentials_path, 'r') as f:
-                gcp_credentials_json = f.read()
-            logger.info(f"Found GCP credentials file: {gcp_credentials_path}")
-        except Exception as e:
-            logger.warning(f"Could not read GCP credentials file: {e}")
-    elif os.path.exists("dhaya123-335710-039eabaad669.json"):
-        # Try default credential file name
-        try:
-            with open("dhaya123-335710-039eabaad669.json", 'r') as f:
-                gcp_credentials_json = f.read()
-            logger.info("Found default GCP credentials file")
-        except Exception as e:
-            logger.warning(f"Could not read default GCP credentials file: {e}")
+            # Validate it's valid JSON
+            json.loads(gcp_credentials_json_str)
+            gcp_credentials_json = gcp_credentials_json_str
+            logger.info("Using GCP credentials from GCP_CREDENTIALS_JSON environment variable")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON in GCP_CREDENTIALS_JSON: {e}. Falling back to file-based approach.")
+    
+    # Priority 2: Try to get credentials from file path
+    if not gcp_credentials_json:
+        gcp_credentials_path = os.getenv("GCP_CREDENTIALS_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if gcp_credentials_path and os.path.exists(gcp_credentials_path):
+            try:
+                with open(gcp_credentials_path, 'r') as f:
+                    gcp_credentials_json = f.read()
+                logger.info(f"Found GCP credentials file: {gcp_credentials_path}")
+            except Exception as e:
+                logger.warning(f"Could not read GCP credentials file: {e}")
+        elif os.path.exists("dhaya123-335710-039eabaad669.json"):
+            # Try default credential file name (fallback)
+            try:
+                with open("dhaya123-335710-039eabaad669.json", 'r') as f:
+                    gcp_credentials_json = f.read()
+                logger.info("Found default GCP credentials file")
+            except Exception as e:
+                logger.warning(f"Could not read default GCP credentials file: {e}")
     
     # Build export commands
     export_cmds_list = [
@@ -536,7 +549,7 @@ def build_startup_command() -> str:
     # Add GCP credentials setup - upload to GCS and use signed URL to reduce command size
     gcp_creds_setup = ""
     if gcp_credentials_json:
-        import json
+        # json is already imported at module level
         import tempfile
         import uuid
         try:

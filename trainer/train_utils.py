@@ -7,7 +7,11 @@ import pandas as pd
 import numpy as np
 import time
 import os
+import logging
 from typing import Optional, Dict, Any
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
 
 try:
     import ta
@@ -777,10 +781,31 @@ def download_s3_dataset(coin, trl_model=False):
         gcs_manager.download_df(article_path, key=f'articles/articles.parquet')
         
     for coin in coins:
+        # Download test data (optional - don't fail if it doesn't exist)
         price_test_path = os.path.join(data_base_path, "prices", f"{coin}_test.csv")
         os.makedirs(os.path.dirname(price_test_path), exist_ok=True)
-        gcs_manager.download_df(price_test_path, key=f'prices/{coin}_test.parquet')
-    
+        try:
+            gcs_manager.download_df(price_test_path, key=f'prices/{coin}_test.parquet')
+            logger.info(f"Downloaded test price data for {coin}")
+        except FileNotFoundError as e:
+            # Test data is optional - log warning but continue
+            logger.warning(f"Test price data not found in GCS for {coin}: {e}")
+            logger.warning("Continuing without test data (this is optional)")
+        except Exception as e:
+            logger.warning(f"Failed to download test price data for {coin}: {e}")
+            logger.warning("Continuing without test data (this is optional)")
+        
+        # Download main price data (required - fail if this doesn't exist)
         prices_path = os.path.join(data_base_path, "prices", f"{coin}.csv")
         os.makedirs(os.path.dirname(prices_path), exist_ok=True)
-        gcs_manager.download_df(prices_path, key=f'prices/{coin}.parquet')
+        try:
+            gcs_manager.download_df(prices_path, key=f'prices/{coin}.parquet')
+            logger.info(f"Downloaded main price data for {coin}")
+        except FileNotFoundError as e:
+            error_msg = f"Required price data not found in GCS for {coin}: {e}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Failed to download required price data for {coin}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e

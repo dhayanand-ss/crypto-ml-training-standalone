@@ -3,12 +3,25 @@ from google.oauth2 import service_account
 from google.auth import exceptions as google_auth_exceptions
 from datetime import datetime, timedelta, timezone
 import os
+import json
 
 # Initialize GCP Firestore client
 def _get_firestore_client():
     """Initialize and return Firestore client using GCP credentials."""
     try:
-        # Try to get credentials from environment variable or default path
+        # Priority 1: Check for embedded JSON credentials
+        cred_json_str = os.getenv("GCP_CREDENTIALS_JSON")
+        if cred_json_str:
+            try:
+                cred_dict = json.loads(cred_json_str)
+                cred = service_account.Credentials.from_service_account_info(cred_dict)
+                project_id = cred.project_id if hasattr(cred, 'project_id') else os.getenv("GCP_PROJECT_ID")
+                return firestore.Client(project=project_id, credentials=cred)
+            except (json.JSONDecodeError, Exception) as e:
+                print(f"[WARNING] Failed to parse GCP_CREDENTIALS_JSON: {e}")
+                # Fall through to file-based approach
+        
+        # Priority 2: Try to get credentials from file path
         cred_path = os.getenv("GCP_CREDENTIALS_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         if cred_path and os.path.exists(cred_path):
             try:

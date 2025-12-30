@@ -16,6 +16,7 @@ import pandas as pd
 from io import BytesIO
 import hashlib
 import os
+import json
 import logging
 from pathlib import Path
 from typing import Optional, Union, List, Dict
@@ -23,6 +24,18 @@ from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Validate credentials path at module import (non-blocking, just warnings)
+try:
+    cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GCP_CREDENTIALS_PATH")
+    if cred_path and not os.path.isabs(cred_path):
+        logger.warning(
+            f"WARNING: GCP credentials path is relative: {cred_path}\n"
+            f"This will cause errors in Docker/Airflow. Use absolute path instead.\n"
+            f"Example: /opt/airflow/gcp-credentials.json"
+        )
+except Exception:
+    pass  # Don't fail on import if validation fails
 
 
 class GCSManager:
@@ -57,26 +70,148 @@ class GCSManager:
             )
         
         self.bucket_name = bucket
-        self.credentials_path = credentials_path or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
+        
+        # Priority 1: Check for embedded JSON credentials in environment variable
+        # This allows pasting credentials directly without file path issues
+        cred_json_str = os.getenv("GCP_CREDENTIALS_JSON")
+        if cred_json_str:
+            try:
+                # Parse the JSON string to validate it
+                cred_dict = json.loads(cred_json_str)
+                logger.info("Using GCP credentials from GCP_CREDENTIALS_JSON environment variable")
+                # Store as dict for later use
+                self.credentials_dict = cred_dict
+                self.credentials_path = None
+                self.project_id = project_id or cred_dict.get("project_id") or os.getenv("GCP_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+                
+                # Initialize client with credentials dict
+                try:
+                    from google.oauth2 import service_account
+                    cred = service_account.Credentials.from_service_account_info(cred_dict)
+                    self.client = storage.Client(credentials=cred, project=self.project_id)
+                    self.bucket = self.client.bucket(self.bucket_name)
+                    logger.info(f"GCSManager initialized successfully with bucket: {bucket} (using embedded credentials)")
+                    return  # Early return - credentials loaded from JSON string
+                except Exception as e:
+                    error_msg = f"Failed to initialize GCS client with embedded credentials: {e}"
+                    logger.error("=" * 60)
+                    logger.error("GCS CLIENT INITIALIZATION FAILED")
+                    logger.error("=" * 60)
+                    logger.error(error_msg)
+                    logger.error("=" * 60)
+                    raise RuntimeError(error_msg) from e
+            except json.JSONDecodeError as e:
+                error_msg = (
+                    f"Invalid JSON in GCP_CREDENTIALS_JSON environment variable: {e}\n"
+                    f"Ensure the JSON string is valid and properly escaped."
+                )
+                logger.error("=" * 60)
+                logger.error("GCP CREDENTIALS JSON ERROR")
+                logger.error("=" * 60)
+                logger.error(error_msg)
+                logger.error("=" * 60)
+                raise ValueError(error_msg) from e
+        
+        # Priority 2: Get credentials path from parameter or environment variable
+        cred_path = credentials_path or os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GCP_CREDENTIALS_PATH")
+        
+        # CRITICAL: Convert relative paths to absolute paths
+        # Never use relative paths - they cause issues in Docker/Airflow
+        if cred_path:
+            if not os.path.isabs(cred_path):
+                # Convert relative path to absolute
+                # Try to resolve relative to current working directory first
+                abs_path = os.path.abspath(cred_path)
+                if os.path.exists(abs_path):
+                    cred_path = abs_path
+                    logger.info(f"Converted relative credentials path to absolute: {cred_path}")
+                else:
+                    # If relative path doesn't exist, this is an error
+                    error_msg = (
+                        f"GCP credentials file not found at relative path: {cred_path}\n"
+                        f"Absolute path attempted: {abs_path}\n"
+                        f"Current working directory: {os.getcwd()}\n"
+                        f"CRITICAL: GCSManager requires absolute paths for credentials.\n"
+                        f"Set GOOGLE_APPLICATION_CREDENTIALS or GCP_CREDENTIALS_PATH to an absolute path."
+                    )
+                    logger.error("=" * 60)
+                    logger.error("GCP CREDENTIALS PATH ERROR")
+                    logger.error("=" * 60)
+                    logger.error(error_msg)
+                    logger.error("=" * 60)
+                    raise FileNotFoundError(error_msg)
+        
+        self.credentials_path = cred_path
+        self.credentials_dict = None  # Only set when using embedded JSON
+        self.project_id = project_id or os.getenv("GCP_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
         
         try:
             # Initialize GCS client
-            if self.credentials_path and os.path.exists(self.credentials_path):
+            if self.credentials_path:
+                # Verify file exists with absolute path
+                if not os.path.isabs(self.credentials_path):
+                    error_msg = (
+                        f"CRITICAL: Credentials path must be absolute, got: {self.credentials_path}\n"
+                        f"Set GOOGLE_APPLICATION_CREDENTIALS to an absolute path like: /opt/airflow/gcp-credentials.json"
+                    )
+                    logger.error("=" * 60)
+                    logger.error("GCP CREDENTIALS PATH ERROR")
+                    logger.error("=" * 60)
+                    logger.error(error_msg)
+                    logger.error("=" * 60)
+                    raise ValueError(error_msg)
+                
+                if not os.path.exists(self.credentials_path):
+                    error_msg = (
+                        f"GCP credentials file not found: {self.credentials_path}\n"
+                        f"CRITICAL: GCS operations will fail without valid credentials.\n"
+                        f"Ensure the file exists at the specified absolute path."
+                    )
+                    logger.error("=" * 60)
+                    logger.error("GCP CREDENTIALS FILE NOT FOUND")
+                    logger.error("=" * 60)
+                    logger.error(error_msg)
+                    logger.error("=" * 60)
+                    raise FileNotFoundError(error_msg)
+                
+                logger.info(f"Using GCP credentials from: {self.credentials_path}")
                 self.client = storage.Client.from_service_account_json(
                     self.credentials_path,
                     project=self.project_id
                 )
             else:
+                # No credentials path provided - try Application Default Credentials
+                logger.warning("No GCP credentials path provided. Attempting to use Application Default Credentials.")
+                if not self.project_id:
+                    error_msg = (
+                        "CRITICAL: No GCP credentials path and no project ID provided.\n"
+                        "GCSManager cannot initialize without credentials.\n"
+                        "Set GOOGLE_APPLICATION_CREDENTIALS or GCP_CREDENTIALS_PATH environment variable."
+                    )
+                    logger.error("=" * 60)
+                    logger.error("GCP CREDENTIALS MISSING")
+                    logger.error("=" * 60)
+                    logger.error(error_msg)
+                    logger.error("=" * 60)
+                    raise ValueError(error_msg)
+                
                 # Try default credentials (e.g., from environment or gcloud auth)
                 self.client = storage.Client(project=self.project_id)
             
             # Get bucket
             self.bucket = self.client.bucket(self.bucket_name)
-            logger.info(f"GCSManager initialized with bucket: {bucket}")
-        except Exception as e:
-            logger.error(f"Failed to initialize GCS client: {e}")
+            logger.info(f"GCSManager initialized successfully with bucket: {bucket}")
+        except (FileNotFoundError, ValueError) as e:
+            # Re-raise our custom errors
             raise
+        except Exception as e:
+            error_msg = f"Failed to initialize GCS client: {e}"
+            logger.error("=" * 60)
+            logger.error("GCS CLIENT INITIALIZATION FAILED")
+            logger.error("=" * 60)
+            logger.error(error_msg)
+            logger.error("=" * 60)
+            raise RuntimeError(error_msg) from e
     
     # -------------------
     # Hash helpers

@@ -80,9 +80,21 @@ def ensure_data_directories():
 def download_datasets():
     """Download datasets from GCS/S3."""
     if not S3_AVAILABLE:
-        logger.warning("GCSManager/S3Manager not available. Skipping dataset download.")
-        logger.warning("Make sure datasets are available locally or configure GCS credentials.")
-        return False
+        error_msg = (
+            "GCSManager/S3Manager not available. Cannot download from GCS.\n"
+            "This usually means:\n"
+            "  1. The 'trainer' module is not on Python's import path\n"
+            "  2. The trainer.train_utils module cannot be imported\n"
+            "  3. GCSManager (from utils.artifact_control) is not available\n\n"
+            "Refusing to continue with potentially stale local cached data.\n"
+            "This prevents silent data drift and ensures reproducible training."
+        )
+        logger.error("=" * 60)
+        logger.error("GCS ACCESS UNAVAILABLE - FAILING LOUDLY")
+        logger.error("=" * 60)
+        logger.error(error_msg)
+        logger.error("=" * 60)
+        raise RuntimeError(error_msg)
     
     try:
         # Use project root to determine data path
@@ -105,10 +117,20 @@ def download_datasets():
             logger.info(f"Downloading price data for {coin}...")
             try:
                 download_s3_dataset(coin, trl_model=False)
-                logger.info(f"Successfully downloaded price data for {coin}")
+                logger.info(f"✓ Successfully downloaded price data for {coin}")
+            except FileNotFoundError as e:
+                # Required file not found - this is a critical error
+                error_msg = f"CRITICAL: Required price data not found in GCS for {coin}: {e}"
+                logger.error("=" * 60)
+                logger.error(error_msg)
+                logger.error("=" * 60)
+                raise RuntimeError(error_msg) from e
             except Exception as e:
-                logger.error(f"Failed to download price data for {coin}: {e}")
-                # Continue with other coins even if one fails
+                error_msg = f"Failed to download price data for {coin}: {e}"
+                logger.error("=" * 60)
+                logger.error(error_msg)
+                logger.error("=" * 60)
+                raise RuntimeError(error_msg) from e
         
         # Download articles for TRL model
         logger.info("Downloading articles for TRL model...")
@@ -126,7 +148,17 @@ def download_datasets():
         logger.error(f"Error during dataset download: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return False
+        error_msg = (
+            "Dataset download from GCS failed.\n"
+            "Refusing to continue with cached local data.\n"
+            "This prevents silent data drift and ensures reproducible training."
+        )
+        logger.error("=" * 60)
+        logger.error("DATASET DOWNLOAD FAILED - FAILING LOUDLY")
+        logger.error("=" * 60)
+        logger.error(error_msg)
+        logger.error("=" * 60)
+        raise RuntimeError(error_msg) from e
 
 
 def validate_datasets():
@@ -245,10 +277,27 @@ def main():
     
     # Step 2: Download datasets from GCS/S3
     logger.info("\nStep 2: Downloading datasets from GCS/S3...")
-    download_success = download_datasets()
-    
-    if not download_success:
-        logger.warning("Dataset download had issues, but continuing with validation...")
+    try:
+        download_success = download_datasets()  # This will raise RuntimeError on any failure
+        if not download_success:
+            # This should never happen since we raise on failure, but adding as safety check
+            raise RuntimeError(
+                "Dataset download from GCS failed. "
+                "Refusing to continue with cached local data."
+            )
+        logger.info("✓ Dataset download completed successfully")
+    except RuntimeError as e:
+        # Re-raise RuntimeError (our guardrail for missing GCS or download failures)
+        # This ensures the DAG fails loudly instead of silently using cached data
+        logger.error("=" * 60)
+        logger.error("DATASET DOWNLOAD FAILED - DAG WILL FAIL")
+        logger.error("=" * 60)
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during dataset download: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise RuntimeError(f"Dataset download failed with unexpected error: {e}") from e
     
     # Step 3: Validate datasets
     logger.info("\nStep 3: Validating datasets...")
