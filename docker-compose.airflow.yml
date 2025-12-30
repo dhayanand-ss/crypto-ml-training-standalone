@@ -43,7 +43,12 @@ services:
       VASTAI_API_KEY: ${VASTAI_API_KEY}
       VASTAI_DOCKER_IMAGE: ${VASTAI_DOCKER_IMAGE:-python:3.10-slim}
       VASTAI_GITHUB_REPO: ${VASTAI_GITHUB_REPO:-}
-      # GCP Firestore Configuration
+      # GCP Configuration
+      # Priority 1: Embedded JSON (set GCP_CREDENTIALS_JSON with full JSON content) - avoids file path issues
+      # Priority 2: File path (absolute paths required for Airflow)
+      # These environment variables are used by GCSManager to authenticate with Google Cloud Storage
+      # NOTE: Do NOT commit credentials to git. Set GCP_CREDENTIALS_JSON as environment variable at runtime.
+      GCP_CREDENTIALS_JSON: ${GCP_CREDENTIALS_JSON:-}  # Set via environment variable, not in this file
       GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH:-/opt/airflow/gcp-credentials.json}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/opt/airflow/gcp-credentials.json}
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-dhaya123-335710}
@@ -56,6 +61,7 @@ services:
       - ./data:/opt/airflow/data
       - ./models:/opt/airflow/models
       - ./utils:/opt/airflow/utils
+      - ./trainer:/opt/airflow/trainer
       - ./results:/opt/airflow/results
       - custom-persistent-shared:/opt/airflow/custom_persistent_shared
       # Mount GCP credentials file if it exists
@@ -87,7 +93,12 @@ services:
       VASTAI_API_KEY: ${VASTAI_API_KEY}
       VASTAI_DOCKER_IMAGE: ${VASTAI_DOCKER_IMAGE:-python:3.10-slim}
       VASTAI_GITHUB_REPO: ${VASTAI_GITHUB_REPO:-}
-      # GCP Firestore Configuration
+      # GCP Configuration
+      # Priority 1: Embedded JSON (set GCP_CREDENTIALS_JSON with full JSON content) - avoids file path issues
+      # Priority 2: File path (absolute paths required for Airflow)
+      # These environment variables are used by GCSManager to authenticate with Google Cloud Storage
+      # NOTE: Do NOT commit credentials to git. Set GCP_CREDENTIALS_JSON as environment variable at runtime.
+      GCP_CREDENTIALS_JSON: ${GCP_CREDENTIALS_JSON:-}  # Set via environment variable, not in this file
       GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH:-/opt/airflow/gcp-credentials.json}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/opt/airflow/gcp-credentials.json}
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-dhaya123-335710}
@@ -98,6 +109,7 @@ services:
       - ./data:/opt/airflow/data
       - ./models:/opt/airflow/models
       - ./utils:/opt/airflow/utils
+      - ./trainer:/opt/airflow/trainer
       - ./results:/opt/airflow/results
       - custom-persistent-shared:/opt/airflow/custom_persistent_shared
       # Mount GCP credentials file if it exists
@@ -151,7 +163,11 @@ services:
       DATA_PATH: /opt/airflow/data/prices
       LOG_DIR: /opt/airflow/custom_persistent_shared/logs
       KAFKA_HOST: ${KAFKA_HOST:-localhost}
-      # GCP Firestore Configuration
+      # GCP Configuration
+      # Priority 1: Embedded JSON (set GCP_CREDENTIALS_JSON with full JSON content) - avoids file path issues
+      # Priority 2: File path (absolute paths required for Airflow)
+      # NOTE: Do NOT commit credentials to git. Set GCP_CREDENTIALS_JSON as environment variable at runtime.
+      GCP_CREDENTIALS_JSON: ${GCP_CREDENTIALS_JSON:-}  # Set via environment variable, not in this file
       GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH:-/opt/airflow/gcp-credentials.json}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/opt/airflow/gcp-credentials.json}
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-dhaya123-335710}
@@ -168,6 +184,7 @@ services:
       - ./data:/opt/airflow/data
       - ./models:/opt/airflow/models
       - ./utils:/opt/airflow/utils
+      - ./trainer:/opt/airflow/trainer
       - ./results:/opt/airflow/results
       - custom-persistent-shared:/opt/airflow/custom_persistent_shared
       # Mount GCP credentials file if it exists
