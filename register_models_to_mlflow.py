@@ -85,9 +85,9 @@ def register_lightgbm_models():
                     from trainer.train_utils import convert_to_onnx
                     logger.info(f"Converting {version} to ONNX...")
                     onnx_model = convert_to_onnx(model, type="lightgbm", sample_input=sample_input)
-                    logger.info(f"✅ ONNX conversion successful for {version}")
+                    logger.info(f"OK: ONNX conversion successful for {version}")
                 except Exception as e:
-                    logger.warning(f"⚠️  ONNX conversion failed for {version}: {e}")
+                    logger.warning(f"WARNING:  ONNX conversion failed for {version}: {e}")
                     logger.warning("Model will be registered without ONNX. FastAPI may not work.")
             
             # Start MLflow run
@@ -108,7 +108,7 @@ def register_lightgbm_models():
                         onnx.save(onnx_model, temp_onnx.name)
                         mlflow.log_artifact(temp_onnx.name, artifact_path=f"{model_name}/onnx")
                         os.unlink(temp_onnx.name)
-                        logger.info(f"✅ ONNX model logged for {version}")
+                        logger.info(f"OK: ONNX model logged for {version}")
                     except Exception as e:
                         logger.warning(f"Failed to log ONNX model: {e}")
                 
@@ -121,7 +121,7 @@ def register_lightgbm_models():
                     name=model_name
                 )
                 
-                logger.info(f"✅ Registered {model_name} version {registered_model.version} from {version}")
+                logger.info(f"OK: Registered {model_name} version {registered_model.version} from {version}")
                 
                 # Set to Production if it's v1 or v3
                 if version in ["v1", "v3"]:
@@ -130,10 +130,10 @@ def register_lightgbm_models():
                         version=registered_model.version,
                         stage="Production"
                     )
-                    logger.info(f"✅ Set {model_name} v{registered_model.version} to Production stage")
+                    logger.info(f"OK: Set {model_name} v{registered_model.version} to Production stage")
                 
         except Exception as e:
-            logger.error(f"❌ Failed to register {version}: {e}")
+            logger.error(f"ERROR: Failed to register {version}: {e}")
             import traceback
             traceback.print_exc()
 
@@ -199,7 +199,7 @@ def register_tst_models():
             model.load_state_dict(model_state)
             model.eval()  # Set to evaluation mode
             
-            logger.info(f"✅ Model reconstructed successfully")
+            logger.info(f"OK: Model reconstructed successfully")
             
             # Convert to ONNX if possible
             onnx_model = None
@@ -210,9 +210,9 @@ def register_tst_models():
                 sample_input = torch.zeros(1, 15, input_dim, dtype=torch.float32)
                 logger.info(f"Converting {version} to ONNX...")
                 onnx_model = convert_to_onnx(model, type="pytorch", sample_input=sample_input)
-                logger.info(f"✅ ONNX conversion successful for {version}")
+                logger.info(f"OK: ONNX conversion successful for {version}")
             except Exception as e:
-                logger.warning(f"⚠️  ONNX conversion failed for {version}: {e}")
+                logger.warning(f"WARNING:  ONNX conversion failed for {version}: {e}")
                 logger.warning("Model will be registered without ONNX. FastAPI may not work.")
             
             # Start MLflow run
@@ -222,7 +222,7 @@ def register_tst_models():
                 
                 # Log PyTorch model properly
                 mlflow.pytorch.log_model(model, artifact_path=model_name)
-                logger.info(f"✅ PyTorch model logged for {version}")
+                logger.info(f"OK: PyTorch model logged for {version}")
                 
                 # Log ONNX model if available
                 if onnx_model is not None:
@@ -233,7 +233,7 @@ def register_tst_models():
                         onnx.save(onnx_model, temp_onnx.name)
                         mlflow.log_artifact(temp_onnx.name, artifact_path=f"{model_name}/onnx")
                         os.unlink(temp_onnx.name)
-                        logger.info(f"✅ ONNX model logged for {version}")
+                        logger.info(f"OK: ONNX model logged for {version}")
                     except Exception as e:
                         logger.warning(f"Failed to log ONNX model: {e}")
                 
@@ -246,7 +246,7 @@ def register_tst_models():
                     name=model_name
                 )
                 
-                logger.info(f"✅ Registered {model_name} version {registered_model.version} from {version}")
+                logger.info(f"OK: Registered {model_name} version {registered_model.version} from {version}")
                 
                 # Set to Production if it's v1 or v3
                 if version in ["v1", "v3"]:
@@ -255,10 +255,10 @@ def register_tst_models():
                         version=registered_model.version,
                         stage="Production"
                     )
-                    logger.info(f"✅ Set {model_name} v{registered_model.version} to Production stage")
+                    logger.info(f"OK: Set {model_name} v{registered_model.version} to Production stage")
                 
         except Exception as e:
-            logger.error(f"❌ Failed to register {version}: {e}")
+            logger.error(f"ERROR: Failed to register {version}: {e}")
             import traceback
             traceback.print_exc()
 
@@ -281,9 +281,9 @@ def main():
         mlflow.set_tracking_uri(tracking_uri)
         # Test connection
         mlflow.search_experiments()
-        print("✅ Connected to MLflow")
+        print("OK: Connected to MLflow")
     except Exception as e:
-        print(f"❌ Failed to connect to MLflow: {e}")
+        print(f"ERROR: Failed to connect to MLflow: {e}")
         print("\nMake sure MLflow server is running:")
         print("  mlflow ui --port 5000")
         return

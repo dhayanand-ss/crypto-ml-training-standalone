@@ -40,3 +40,8 @@ Write-Host "docker exec crypto-ml-training-standalone-airflow-scheduler-1 airflo
 
 
 
+
+
+
+
+

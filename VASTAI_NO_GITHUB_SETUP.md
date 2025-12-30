@@ -138,3 +138,8 @@ Then restart your Airflow containers to pick up the new environment variable.
 
 Choose the option that works best for your setup!
 
+
+
+
+
+

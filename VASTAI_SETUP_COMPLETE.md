@@ -87,3 +87,8 @@ VASTAI_API_KEY=a8a659e0c4935171d71bd6f7dce3a87a28068fe80967eb3235750eae1e286de1
 The configuration is complete. Once you restart Docker Desktop and bring up the containers, the `vast_ai_train` task should be able to access your Vast AI API key and create instances successfully.
 
 
+
+
+
+
+

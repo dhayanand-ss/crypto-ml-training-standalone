@@ -145,10 +145,63 @@ Examples:
     print(f"KL Coefficient: {args.kl_coef}")
     print("=" * 60)
     
-    # Check if files exist
-    if not os.path.exists(args.articles_path):
-        print(f"Error: Articles file not found: {args.articles_path}")
-        sys.exit(1)
+    # Check if files exist - try multiple paths
+    # Check for prices file in multiple locations
+    prices_paths = [
+        args.prices_path,
+        f"data/{args.coin.lower()}.csv",
+        f"data/prices/{args.coin}.csv",
+        f"data/prices/{args.coin.lower()}.csv",
+    ]
+    
+    prices_file_found = None
+    for path in prices_paths:
+        if os.path.exists(path):
+            prices_file_found = path
+            print(f"Found prices file at: {path}")
+            args.prices_path = path
+            break
+    
+    if not prices_file_found:
+        error_msg = f"Prices file not found. Checked: {', '.join(prices_paths)}"
+        print(f"Error: {error_msg}")
+        print("Please ensure price data is available in one of these locations:")
+        for path in prices_paths:
+            print(f"  - {path}")
+        # Update status to FAILED
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message=error_msg)
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as e:
+                print(f"Warning: Failed to update status: {e}")
+        return
+    
+    # Check if articles file exists - try multiple paths
+    articles_paths = [
+        args.articles_path,
+        "data/articles.csv",
+    ]
+    
+    articles_file_found = None
+    for path in articles_paths:
+        if os.path.exists(path):
+            articles_file_found = path
+            print(f"Found articles file at: {path}")
+            args.articles_path = path
+            break
+    
+    if not articles_file_found:
+        error_msg = f"Articles file not found. Checked: {', '.join(articles_paths)}"
+        print(f"Error: {error_msg}")
+        # Update status to FAILED
+        if STATUS_DB_AVAILABLE:
+            try:
+                db.set_state(model=model, coin=coin, state="FAILED", error_message=error_msg)
+                print(f"[STATUS] Updated {model}_{coin} status to FAILED")
+            except Exception as e:
+                print(f"Warning: Failed to update status: {e}")
+        return
     
     if not os.path.exists(args.prices_path):
         print(f"Error: Prices file not found: {args.prices_path}")

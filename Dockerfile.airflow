@@ -21,6 +21,9 @@ COPY --chown=airflow:root requirements.txt /requirements.txt
 # Install dependencies - pandas-ta is commented out to avoid resolution issues
 RUN pip install --no-cache-dir -r /requirements.txt
 
+# Install Playwright browsers (required for web scraping)
+RUN playwright install chromium
+
 # Set working directory
 WORKDIR /opt/airflow
 

@@ -180,3 +180,8 @@ Write-Host "3. To update the image after code changes:" -ForegroundColor White
 Write-Host "   .\build_and_push_vastai_image.ps1" -ForegroundColor Cyan
 Write-Host ""
 
+
+
+
+
+

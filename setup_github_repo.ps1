@@ -283,3 +283,8 @@ Write-Host ""
 Write-Host "  3. Your Vast AI instances will now clone code from GitHub" -ForegroundColor White
 Write-Host ""
 
+
+
+
+
+

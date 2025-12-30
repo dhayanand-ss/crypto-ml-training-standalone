@@ -94,8 +94,25 @@ except ImportError:
     MLFLOW_AVAILABLE = False
 
 # Initialize ModelManager
+# Auto-detect correct MLflow URI: if using Docker hostname but not in Docker, use localhost
 mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+if mlflow_tracking_uri == "http://mlflow:5000":
+    # Check if we can actually reach mlflow:5000 (only works in Docker)
+    # If not, assume we're running locally and use localhost
+    try:
+        import socket
+        socket.gethostbyname("mlflow")
+        # If we can resolve "mlflow", we're probably in Docker
+        logger.info("Using Docker hostname for MLflow: http://mlflow:5000")
+    except socket.gaierror:
+        # Can't resolve "mlflow", we're running locally
+        logger.warning("Cannot resolve 'mlflow' hostname. Switching to localhost for local development.")
+        mlflow_tracking_uri = "http://localhost:5000"
+        # Update environment variable for this process
+        os.environ["MLFLOW_TRACKING_URI"] = mlflow_tracking_uri
+
 model_manager = ModelManager(tracking_uri=mlflow_tracking_uri)
+logger.info(f"MLflow Tracking URI: {mlflow_tracking_uri}")
 
 
 # Pydantic models for request/response
@@ -154,11 +171,28 @@ def load_production_models() -> Dict[str, Any]:
     Load all production models from MLflow.
     Returns a dictionary of model_key -> ONNX InferenceSession
     """
+    global model_manager
+    
     loaded_models = {}
     
     try:
-        # Get all registered models
-        registered_models = model_manager.client.search_registered_models()
+        # Try to get registered models
+        try:
+            registered_models = model_manager.client.search_registered_models()
+        except Exception as e:
+            # If connection fails, try to fix the URI and reinitialize
+            if "mlflow:5000" in str(mlflow_tracking_uri) or "Invalid Host header" in str(e):
+                logger.warning(f"MLflow connection failed with current URI {mlflow_tracking_uri}")
+                logger.info("Attempting to reconnect with localhost...")
+                # Reinitialize with localhost
+                new_uri = "http://localhost:5000"
+                model_manager = ModelManager(tracking_uri=new_uri)
+                os.environ["MLFLOW_TRACKING_URI"] = new_uri
+                logger.info(f"Reinitialized ModelManager with URI: {new_uri}")
+                registered_models = model_manager.client.search_registered_models()
+            else:
+                raise
+        
         logger.info(f"Found {len(registered_models)} registered model(s) in MLflow")
         
         if not registered_models:
@@ -683,10 +717,26 @@ async def debug_mlflow():
         debug_info["errors"].append("MLflow is not available. Install with: pip install mlflow")
         return debug_info
     
+    global model_manager
+    
     try:
-        # Test connection
-        registered_models = model_manager.client.search_registered_models()
+        # Test connection - try to fix URI if needed
+        try:
+            registered_models = model_manager.client.search_registered_models()
+        except Exception as e:
+            # If connection fails with Docker hostname, try localhost
+            if "mlflow:5000" in str(mlflow_tracking_uri) or "Invalid Host header" in str(e):
+                logger.warning(f"MLflow connection failed. Attempting to fix URI...")
+                new_uri = "http://localhost:5000"
+                model_manager = ModelManager(tracking_uri=new_uri)
+                os.environ["MLFLOW_TRACKING_URI"] = new_uri
+                logger.info(f"Reinitialized ModelManager with URI: {new_uri}")
+                registered_models = model_manager.client.search_registered_models()
+            else:
+                raise
+        
         debug_info["connection_status"] = "connected"
+        debug_info["mlflow_tracking_uri"] = os.environ.get("MLFLOW_TRACKING_URI", mlflow_tracking_uri)
         debug_info["registered_models"] = [{"name": m.name, "latest_versions": len(m.latest_versions)} for m in registered_models]
         
         # Get ALL model versions (not just Production)

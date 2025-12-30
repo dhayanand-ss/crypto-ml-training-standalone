@@ -141,3 +141,8 @@ python -m utils.producer_consumer.consumer --crypto BTCUSDT --model lightgbm --v
 
 
 
+
+
+
+
+

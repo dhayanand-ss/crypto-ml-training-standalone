@@ -90,3 +90,8 @@ docker-compose -f docker-compose.airflow.yml ps
 
 The only manual step needed is ensuring Docker Desktop is running. Enable auto-start and you're all set! 🎉
 
+
+
+
+
+

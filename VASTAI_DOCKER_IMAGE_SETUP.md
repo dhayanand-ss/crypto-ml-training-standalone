@@ -104,3 +104,8 @@ VASTAI_DOCKER_IMAGE=your-username/your-image:tag
 
 No need to run the build script!
 
+
+
+
+
+

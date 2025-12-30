@@ -485,6 +485,33 @@ class GCSManager:
         except Exception as e:
             logger.error(f"Failed to download {key}: {e}")
             raise
+    
+    def generate_signed_url(self, key: str, expiration_minutes: int = 60) -> str:
+        """
+        Generate a signed URL for temporary access to a GCS object.
+        
+        Args:
+            key: GCS blob name (e.g., 'credentials/gcp-credentials.json')
+            expiration_minutes: URL expiration time in minutes (default: 60)
+        
+        Returns:
+            Signed URL string
+        """
+        try:
+            from datetime import timedelta
+            blob = self.bucket.blob(key)
+            if not blob.exists():
+                raise FileNotFoundError(f"Blob {key} not found in bucket {self.bucket_name}")
+            
+            url = blob.generate_signed_url(
+                expiration=timedelta(minutes=expiration_minutes),
+                method='GET'
+            )
+            logger.info(f"Generated signed URL for {key} (expires in {expiration_minutes} minutes)")
+            return url
+        except Exception as e:
+            logger.error(f"Failed to generate signed URL for {key}: {e}")
+            raise
 
 
 # -------------------

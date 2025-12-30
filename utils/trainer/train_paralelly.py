@@ -61,6 +61,7 @@ def run_all_training_sequential():
     """
     Run all training scripts sequentially.
     This ensures each script can update status independently.
+    Continues running even if one script fails.
     """
     print("=" * 60)
     print("Starting All Training Scripts (Sequential)")
@@ -83,6 +84,10 @@ def run_all_training_sequential():
         result = run_training_script(script_module, script_name)
         results.append(result)
         
+        # Continue to next script even if this one failed
+        if not result[1]:  # If failed
+            print(f"\n⚠️  {script_name} training failed, but continuing with next script...")
+        
         # Small delay between scripts
         time.sleep(2)
     
@@ -97,9 +102,14 @@ def run_all_training_sequential():
         if error_msg:
             print(f"  Error: {error_msg}")
     
-    # Return success if all passed
-    all_success = all(success for _, success, _ in results)
-    return 0 if all_success else 1
+    # Return success if at least one passed (allows partial success)
+    any_success = any(success for _, success, _ in results)
+    if any_success:
+        print("\n✓ At least one training script completed successfully")
+        return 0
+    else:
+        print("\n✗ All training scripts failed")
+        return 1
 
 
 def main():

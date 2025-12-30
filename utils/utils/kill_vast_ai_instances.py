@@ -187,8 +187,27 @@ def kill_instance(instance_id: str) -> bool:
         logger.info(f"Successfully terminated instance {instance_id}")
         return True
     except subprocess.CalledProcessError as e:
+        # Combine stderr and stdout for error detection
+        error_output = (e.stderr or "") + (e.stdout or "")
+        error_msg = error_output.lower() if error_output else str(e).lower()
+        
+        # Check if instance doesn't exist (various error formats including "C.29306163")
+        instance_not_found_patterns = [
+            "no such container",
+            "not found",
+            "does not exist",
+            f"c.{instance_id}",  # Vast AI internal format like "C.29306163"
+            f"container.*{instance_id}",
+        ]
+        
+        # If instance doesn't exist, consider it already terminated
+        if any(pattern in error_msg for pattern in instance_not_found_patterns):
+            logger.info(f"Instance {instance_id} does not exist (may already be terminated)")
+            return True
+        
         logger.error(f"Failed to terminate instance {instance_id}: {e}")
-        logger.error(f"Error output: {e.stderr}")
+        if e.stderr:
+            logger.error(f"Error output: {e.stderr[:200]}")
         return False
 
 

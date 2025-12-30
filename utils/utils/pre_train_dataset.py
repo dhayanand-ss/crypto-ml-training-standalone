@@ -42,7 +42,20 @@ except ImportError as e:
 
 def ensure_data_directories():
     """Create necessary data directories if they don't exist."""
-    data_base_path = os.getenv("DATA_PATH", "data")
+    # Use project root to determine data path (not current working directory)
+    project_root = Path(__file__).parent.parent.parent.resolve()
+    data_base_path_env = os.getenv("DATA_PATH")
+    
+    if data_base_path_env:
+        # If DATA_PATH is set, use it (can be absolute or relative)
+        if os.path.isabs(data_base_path_env):
+            data_base_path = data_base_path_env
+        else:
+            # Relative path - make it relative to project root
+            data_base_path = str((project_root / data_base_path_env).resolve())
+    else:
+        # Default: use project_root/data
+        data_base_path = str((project_root / "data").resolve())
     
     directories = [
         data_base_path,
@@ -60,6 +73,8 @@ def ensure_data_directories():
             create_data_directories(data_base_path)
         except Exception as e:
             logger.warning(f"create_data_directories failed: {e}")
+    
+    return data_base_path
 
 
 def download_datasets():
@@ -70,7 +85,17 @@ def download_datasets():
         return False
     
     try:
-        data_base_path = os.getenv("DATA_PATH", "data")
+        # Use project root to determine data path
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        data_base_path_env = os.getenv("DATA_PATH")
+        
+        if data_base_path_env:
+            if os.path.isabs(data_base_path_env):
+                data_base_path = data_base_path_env
+            else:
+                data_base_path = str((project_root / data_base_path_env).resolve())
+        else:
+            data_base_path = str((project_root / "data").resolve())
         coins = ["BTCUSDT"]  # Default coin, can be extended
         
         logger.info("Starting dataset download from GCS...")
@@ -106,13 +131,18 @@ def download_datasets():
 
 def validate_datasets():
     """Validate that required datasets are available."""
-    data_base_path = os.getenv("DATA_PATH", "data")
-    # Get absolute path to handle working directory issues
-    if not os.path.isabs(data_base_path):
-        # Try to resolve relative to current working directory
-        abs_data_path = os.path.abspath(data_base_path)
+    # Use project root to determine data path (not current working directory)
+    project_root = Path(__file__).parent.parent.parent.resolve()
+    data_base_path_env = os.getenv("DATA_PATH")
+    
+    if data_base_path_env:
+        if os.path.isabs(data_base_path_env):
+            abs_data_path = data_base_path_env
+        else:
+            abs_data_path = str((project_root / data_base_path_env).resolve())
     else:
-        abs_data_path = data_base_path
+        abs_data_path = str((project_root / "data").resolve())
+    logger.info(f"Using data directory: {abs_data_path}")
     
     coins = ["BTCUSDT"]
     
@@ -180,9 +210,38 @@ def main():
     logger.info("Pre-training Dataset Preparation")
     logger.info("=" * 60)
     
+    # Get project root for reference
+    project_root = Path(__file__).parent.parent.parent.resolve()
+    logger.info(f"Project root: {project_root}")
+    logger.info(f"Current working directory: {os.getcwd()}")
+    
     # Step 1: Ensure data directories exist
     logger.info("\nStep 1: Creating data directories...")
-    ensure_data_directories()
+    data_base_path = ensure_data_directories()
+    logger.info(f"Data base path: {data_base_path}")
+    
+    # Step 1.5: Copy data files from project directory if they exist
+    logger.info("\nStep 1.5: Checking for existing data files in project...")
+    import shutil
+    project_data_path = project_root / "data"
+    
+    # Copy btcusdt.csv if it exists in project
+    source_files = [
+        (project_data_path / "btcusdt.csv", Path(data_base_path) / "btcusdt.csv"),
+        (project_data_path / "prices" / "BTCUSDT.csv", Path(data_base_path) / "prices" / "BTCUSDT.csv"),
+        (project_data_path / "articles.csv", Path(data_base_path) / "articles.csv"),
+    ]
+    
+    for source, dest in source_files:
+        if source.exists() and not dest.exists():
+            try:
+                os.makedirs(dest.parent, exist_ok=True)
+                shutil.copy2(source, dest)
+                logger.info(f"✓ Copied {source.name} from project to {dest}")
+            except Exception as e:
+                logger.warning(f"Could not copy {source} to {dest}: {e}")
+        elif source.exists():
+            logger.info(f"ℹ {dest.name} already exists, skipping copy")
     
     # Step 2: Download datasets from GCS/S3
     logger.info("\nStep 2: Downloading datasets from GCS/S3...")

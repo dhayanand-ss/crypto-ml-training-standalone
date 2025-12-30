@@ -432,7 +432,26 @@ class ModelManager:
                     raise ValueError(f"No artifacts found in run {run_id}")
             except Exception as e2:
                 logger.error(f"Failed to download from run_id: {e2}")
-                raise FileNotFoundError(f"Could not download artifacts for {name} v{version}. Source: {version_obj.source}, Error: {e2}")
+                # Last resort: try to find artifacts in local mlruns directory
+                logger.info("Trying to find artifacts in local mlruns directory...")
+                try:
+                    # Look for artifacts in mlruns/{experiment_id}/{run_id}/artifacts/{name}
+                    import pathlib
+                    mlruns_dir = pathlib.Path("mlruns")
+                    if mlruns_dir.exists():
+                        # Search for the run_id directory
+                        for exp_dir in mlruns_dir.iterdir():
+                            if exp_dir.is_dir() and exp_dir.name != "0":
+                                run_dir = exp_dir / run_id
+                                if run_dir.exists():
+                                    artifacts_dir = run_dir / "artifacts" / name
+                                    if artifacts_dir.exists():
+                                        local_path = str(artifacts_dir)
+                                        logger.info(f"Found artifacts in local directory: {local_path}")
+                                        break
+                except Exception as e3:
+                    logger.error(f"Failed to find local artifacts: {e3}")
+                    raise FileNotFoundError(f"Could not download artifacts for {name} v{version}. Source: {version_obj.source}, Error: {e2}")
         
         if local_path is None:
             raise FileNotFoundError(f"Could not determine local path for {name} v{version}")
