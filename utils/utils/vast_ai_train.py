@@ -588,14 +588,23 @@ def build_startup_command() -> str:
     # Vast.ai CLI works better with single-line commands or properly escaped multi-line
     cmd_parts = ["set -e"]
     
+    # Install openssh-client FIRST to prevent SSH errors from Vast AI's .launch script
+    # This must be the very first command to run
+    cmd_parts.append("apt-get update && apt-get install -y openssh-client 2>&1 || true")
+    
     if export_cmds:
         cmd_parts.append(export_cmds)
     
-    # Add GCP credentials setup if available
+    # Add GCP credentials setup if available - must be before data download
     if gcp_creds_setup:
         # Convert multi-line to single line with && separators
         gcp_creds_lines = [line.strip() for line in gcp_creds_setup.strip().split('\n') if line.strip() and not line.strip().startswith('#')]
         cmd_parts.extend(gcp_creds_lines)
+        # Verify credentials file exists and export GCP_PROJECT_ID
+        gcp_project_id = os.getenv("GCP_PROJECT_ID", "")
+        if gcp_project_id:
+            cmd_parts.append(f"export GCP_PROJECT_ID='{gcp_project_id}'")
+        cmd_parts.append("[ -f /workspace/gcp-credentials.json ] || (echo 'ERROR: GCP credentials file not found after download' && exit 1)")
     
     # Check if using a custom Docker image (code pre-packaged) or need to clone/upload
     custom_image = os.getenv("VASTAI_DOCKER_IMAGE", "")
@@ -619,9 +628,8 @@ def build_startup_command() -> str:
     project_root = f"/workspace/{repo_name}"
     
     # Create /workspace directory first (it doesn't exist in base images)
-    # Install openssh-client early to fix SSH errors from Vast AI's .launch script
+    # Note: openssh-client already installed above as first command
     cmd_parts.extend([
-        "apt-get update && apt-get install -y openssh-client || true",
         "mkdir -p /workspace",
         "cd /workspace",
     ])
@@ -668,8 +676,8 @@ def build_startup_command() -> str:
         "pip install wandb || true",
         wandb_login,
         "mkdir -p data/prices data/articles",
-        # Download data files (simplified - minimal logging to reduce size)
-        f"python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('{project_root}');c='/workspace/gcp-credentials.json';os.environ.setdefault('GOOGLE_APPLICATION_CREDENTIALS',c if os.path.exists(c) else '');os.environ.setdefault('GCP_CREDENTIALS_PATH',c if os.path.exists(c) else '');from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;(download_s3_dataset('BTCUSDT',trl_model=False) if S3_AVAILABLE else None)\" 2>&1 || true",
+        # Download data files - ensure credentials are set and verify download
+        f"python -c \"import os,sys;sys.path.insert(0,'.');os.chdir('{project_root}');c='/workspace/gcp-credentials.json';os.environ['GOOGLE_APPLICATION_CREDENTIALS']=c;os.environ['GCP_CREDENTIALS_PATH']=c;gcp_proj=os.getenv('GCP_PROJECT_ID','');os.environ.setdefault('GCP_PROJECT_ID',gcp_proj);creds_exist=os.path.exists(c);print('Creds exist:',creds_exist,'GCP_PROJECT_ID:',gcp_proj);from trainer.train_utils import download_s3_dataset,S3_AVAILABLE;print('S3_AVAILABLE:',S3_AVAILABLE);(download_s3_dataset('BTCUSDT',trl_model=False) if S3_AVAILABLE and creds_exist else print('Skip: S3='+str(S3_AVAILABLE)+', creds='+str(creds_exist)))\" 2>&1 || echo 'Data download failed'",
         # Copy/create btcusdt.csv from various locations (combined and shortened)
         "[ -f data/prices/BTCUSDT.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/BTCUSDT.csv data/btcusdt.csv || true",
         "[ -f data/prices/btcusdt.csv ] && [ ! -f data/btcusdt.csv ] && cp data/prices/btcusdt.csv data/btcusdt.csv || true",
