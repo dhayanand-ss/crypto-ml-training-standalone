@@ -105,6 +105,17 @@ class LightGBMTrainer:
         if sentiment_df is None:
             raise ValueError("Sentiment features are required for LightGBM training. Please provide sentiment_df.")
         
+        # Create date column from open_time if it doesn't exist
+        if 'date' not in crypto_df.columns:
+            if 'open_time' in crypto_df.columns:
+                # Convert open_time to datetime if it's a string
+                if crypto_df['open_time'].dtype == 'object':
+                    crypto_df['date'] = pd.to_datetime(crypto_df['open_time'], errors='coerce', utc=True).dt.strftime('%Y-%m-%d')
+                else:
+                    crypto_df['date'] = pd.to_datetime(crypto_df['open_time'], errors='coerce', utc=True).dt.strftime('%Y-%m-%d')
+            else:
+                raise ValueError("Neither 'date' nor 'open_time' column found in crypto_df. Cannot merge with sentiment data.")
+        
         # Normalize dates to string format (YYYY-MM-DD) to avoid timezone issues
         if crypto_df['date'].dtype == 'object':
             # Already string, ensure format
