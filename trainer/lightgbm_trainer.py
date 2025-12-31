@@ -395,10 +395,26 @@ class LightGBMTrainer:
                 # Save model
                 self.model.save_model(str(v1_model_path))
                 # Save feature info and training metadata
+                # Convert defaultdict to regular dict for serialization
+                evals_result_serializable = None
+                if self.evals_result_ is not None:
+                    try:
+                        import collections
+                        if isinstance(self.evals_result_, collections.defaultdict):
+                            evals_result_serializable = dict(self.evals_result_)
+                            # Recursively convert nested defaultdicts
+                            for key, value in evals_result_serializable.items():
+                                if isinstance(value, collections.defaultdict):
+                                    evals_result_serializable[key] = dict(value)
+                        else:
+                            evals_result_serializable = self.evals_result_
+                    except Exception:
+                        evals_result_serializable = dict(self.evals_result_) if self.evals_result_ else None
+                
                 feature_info = {
                     'feature_names': self.feature_names,
                     'feature_importance': self.feature_importance.to_dict() if self.feature_importance is not None else None,
-                    'evals_result': self.evals_result_,
+                    'evals_result': evals_result_serializable,
                     'best_iteration': self.best_iteration_,
                     'best_score': self.best_score_,
                     'params': self.params
@@ -416,11 +432,29 @@ class LightGBMTrainer:
             
             # Save feature names AND training metadata
             # This preserves eval results that are lost when reloading with lgb.Booster()
+            # Convert defaultdict to regular dict for serialization
+            evals_result_serializable = None
+            if self.evals_result_ is not None:
+                try:
+                    # Convert defaultdict to regular dict recursively
+                    import collections
+                    if isinstance(self.evals_result_, collections.defaultdict):
+                        evals_result_serializable = dict(self.evals_result_)
+                        # Recursively convert nested defaultdicts
+                        for key, value in evals_result_serializable.items():
+                            if isinstance(value, collections.defaultdict):
+                                evals_result_serializable[key] = dict(value)
+                    else:
+                        evals_result_serializable = self.evals_result_
+                except Exception:
+                    # If conversion fails, try to convert to dict anyway
+                    evals_result_serializable = dict(self.evals_result_) if self.evals_result_ else None
+            
             feature_info = {
                 'feature_names': self.feature_names,
                 'feature_importance': self.feature_importance.to_dict() if self.feature_importance is not None else None,
-                # Preserve training metadata
-                'evals_result': self.evals_result_,
+                # Preserve training metadata (convert defaultdict to dict for serialization)
+                'evals_result': evals_result_serializable,
                 'best_iteration': self.best_iteration_,
                 'best_score': self.best_score_,
                 'params': self.params
@@ -433,9 +467,19 @@ class LightGBMTrainer:
             if self.best_iteration_ is not None:
                 print(f"  Best iteration: {self.best_iteration_}")
             if self.best_score_ is not None:
-                print(f"  Best score: {self.best_score_:.6f}")
+                # Handle best_score_ which might be a number or other type
+                try:
+                    if isinstance(self.best_score_, (int, float)):
+                        print(f"  Best score: {self.best_score_:.6f}")
+                    else:
+                        print(f"  Best score: {self.best_score_}")
+                except (TypeError, ValueError):
+                    print(f"  Best score: {self.best_score_}")
             if self.evals_result_:
-                print(f"  Eval results preserved for {len(self.evals_result_)} validation sets")
+                try:
+                    print(f"  Eval results preserved for {len(self.evals_result_)} validation sets")
+                except (TypeError, AttributeError):
+                    print(f"  Eval results preserved (type: {type(self.evals_result_).__name__})")
         except Exception as e:
             print(f"[SAVE] ERROR: Failed to save v3 model: {e}")
             raise
