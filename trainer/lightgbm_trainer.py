@@ -416,7 +416,7 @@ class LightGBMTrainer:
                     'feature_importance': self.feature_importance.to_dict() if self.feature_importance is not None else None,
                     'evals_result': evals_result_serializable,
                     'best_iteration': self.best_iteration_,
-                    'best_score': self.best_score_,
+                    'best_score': float(self.best_score_) if isinstance(self.best_score_, (int, float)) else None,
                     'params': self.params
                 }
                 joblib.dump(feature_info, str(v1_features_path))
@@ -456,7 +456,7 @@ class LightGBMTrainer:
                 # Preserve training metadata (convert defaultdict to dict for serialization)
                 'evals_result': evals_result_serializable,
                 'best_iteration': self.best_iteration_,
-                'best_score': self.best_score_,
+                'best_score': float(self.best_score_) if isinstance(self.best_score_, (int, float)) else None,
                 'params': self.params
             }
             
@@ -590,7 +590,14 @@ class LightGBMTrainer:
             if self.best_iteration_ is not None:
                 print(f"  Best iteration: {self.best_iteration_}")
             if self.best_score_ is not None:
-                print(f"  Best score: {self.best_score_:.6f}")
+                # Handle best_score_ which might be a number or other type
+                try:
+                    if isinstance(self.best_score_, (int, float)):
+                        print(f"  Best score: {self.best_score_:.6f}")
+                    else:
+                        print(f"  Best score: {self.best_score_}")
+                except (TypeError, ValueError):
+                    print(f"  Best score: {self.best_score_}")
             if self.evals_result_:
                 print(f"  Eval results restored for {len(self.evals_result_)} validation sets")
             

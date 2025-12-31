@@ -626,7 +626,7 @@ def main():
     
     # Initialize model with reduced parameters for faster CPU training
     input_dim = 7  # open, high, low, close, volume, taker_base, taker_quote
-    model = TimeSeriesTransformer(
+    tst_model = TimeSeriesTransformer(
         input_dim=input_dim,
         hidden_dim=32,      # Reduced from 64 for faster CPU training
         num_heads=2,        # Keep at 2
@@ -637,7 +637,7 @@ def main():
     )
     
     # Initialize trainer
-    trainer = TimeSeriesTransformerTrainer(model, device)
+    trainer = TimeSeriesTransformerTrainer(tst_model, device)
     
     # Prepare data with reduced sequence length for faster CPU training
     X_train, y_train, X_test, y_test = trainer.prepare_data(
