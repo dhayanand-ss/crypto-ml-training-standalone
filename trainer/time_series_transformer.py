@@ -618,6 +618,13 @@ def main():
         return
     
     crypto_df = pd.read_csv(crypto_path)
+    
+    # OPTIMIZATION: Limit data for faster training (User Request)
+    MAX_SAMPLES = 5000
+    if len(crypto_df) > MAX_SAMPLES:
+         print(f"Limiting data to last {MAX_SAMPLES} rows for speed")
+         crypto_df = crypto_df.tail(MAX_SAMPLES)
+         
     print(f"Loaded {len(crypto_df)} crypto data points")
     
     # Set device
