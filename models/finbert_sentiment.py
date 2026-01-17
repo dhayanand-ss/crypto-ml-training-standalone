@@ -41,7 +41,7 @@ class FinBERTSentimentAnalyzer(nn.Module):
         if tokenizer_path:
             self.tokenizer.save_pretrained(tokenizer_path)
 
-    def train_grpo(self, news_df, crypto_df, epochs=2, batch_size=8, lr=1e-5, window_hours=12, threshold=0.005, **kwargs):
+    def train_grpo(self, news_df, crypto_df, epochs=2, batch_size=8, lr=1e-5, window_hours=12, threshold=0.005, max_samples=None, **kwargs):
         """
         Implementation of training loop (SFT backed) to replace placeholder.
         Performs:
@@ -63,6 +63,11 @@ class FinBERTSentimentAnalyzer(nn.Module):
         except Exception as e:
             print(f"[FinBERT] Annotation failed: {e}. Returning empty history.")
             return {'train_loss': [], 'val_accuracy': [], 'train_surrogate': [], 'train_kl': []}
+
+        # Apply max_samples limit
+        if max_samples and len(labeled_df) > max_samples:
+            print(f"[FinBERT] Limiting dataset to {max_samples} samples (from {len(labeled_df)})")
+            labeled_df = labeled_df.sample(n=max_samples, random_state=42)
 
         texts = labeled_df['text'].tolist()
         labels = labeled_df['label'].tolist()

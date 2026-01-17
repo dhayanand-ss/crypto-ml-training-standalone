@@ -60,6 +60,8 @@ Examples:
                        help="Path to articles CSV file (default: data/articles.csv)")
     parser.add_argument("--prices_path", type=str, default=None,
                        help="Path to prices CSV file (default: data/{coin}.csv)")
+    parser.add_argument("--max_samples", type=int, default=1000,
+                       help="Maximum number of samples to use for training (default: 1000)")
     
     # Model parameters
     parser.add_argument("--model_name", type=str, default="ProsusAI/finbert",
@@ -68,8 +70,8 @@ Examples:
                        help="LoRA rank (default: 4)")
     
     # Training parameters
-    parser.add_argument("--epochs", type=int, default=10,
-                       help="Number of training epochs (default: 10)")
+    parser.add_argument("--epochs", type=int, default=1,
+                       help="Number of training epochs (default: 1)")
     parser.add_argument("--batch_size", type=int, default=4,
                        help="Batch size for training (default: 4)")
     parser.add_argument("--lr", type=float, default=2e-5,
@@ -268,7 +270,8 @@ Examples:
             update_old_every_iter=args.update_old_every_iter,
             val_frac=args.val_frac,
             use_mlflow=args.use_mlflow,
-            use_wandb=args.use_wandb
+            use_wandb=args.use_wandb,
+            max_samples=args.max_samples
         )
         
         # Check time limit
