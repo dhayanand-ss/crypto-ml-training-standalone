@@ -41,8 +41,12 @@ def create_job_file(crypto: str, model: str, version: str, process_type: str = "
         version: Model version
         process_type: "producer" or "consumer"
     """
-    # Ensure jobs directory exists
-    Path(JOBS_DIR).mkdir(parents=True, exist_ok=True)
+    # Ensure jobs directory exists with error handling
+    try:
+        Path(JOBS_DIR).mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError) as e:
+        logger.error(f"Could not create jobs directory {JOBS_DIR}: {e}")
+        raise
     
     # Generate filename
     if process_type == "producer":
@@ -52,16 +56,41 @@ def create_job_file(crypto: str, model: str, version: str, process_type: str = "
     
     filepath = os.path.join(JOBS_DIR, filename)
     
+    # Get GCP credentials - Priority 1: Embedded JSON, Priority 2: File path
+    # Same approach as training pipeline (vast_ai_train.py)
+    gcp_creds_export = ""
+    gcp_credentials_json = os.getenv("GCP_CREDENTIALS_JSON")
+    if gcp_credentials_json:
+        # Priority 1: Export embedded JSON (avoids file path issues)
+        # Escape single quotes and newlines for bash
+        escaped_json = gcp_credentials_json.replace("'", "'\"'\"'").replace("\n", "\\n")
+        gcp_creds_export = f"export GCP_CREDENTIALS_JSON='{escaped_json}'\\n"
+        logger.info("Using GCP_CREDENTIALS_JSON (embedded) for job file")
+    else:
+        # Priority 2: Fall back to file path
+        gcp_creds_export = """export GCP_CREDENTIALS_PATH=/opt/airflow/gcp-credentials.json
+export GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/gcp-credentials.json
+"""
+        logger.info("Using GCP_CREDENTIALS_PATH (file) for job file")
+    
+    # Also export GCP_PROJECT_ID if available
+    gcp_project_id = os.getenv("GCP_PROJECT_ID", "")
+    gcp_project_export = f"export GCP_PROJECT_ID={gcp_project_id}\n" if gcp_project_id else ""
+    
     # Generate command
     if process_type == "producer":
         command = f"""#!/bin/bash
 export PYTHONPATH=..:$PYTHONPATH
-python -m utils.producer_consumer.producer --symbol {crypto}
+export KAFKA_HOST=${{KAFKA_HOST:-kafka}}
+export KAFKA_PORT=${{KAFKA_PORT:-29092}}
+{gcp_creds_export}{gcp_project_export}python -m utils.producer_consumer.producer --symbol {crypto}
 """
     else:
         command = f"""#!/bin/bash
 export PYTHONPATH=..:$PYTHONPATH
-python -m utils.producer_consumer.consumer --crypto {crypto} --model {model} --version {version}
+export KAFKA_HOST=${{KAFKA_HOST:-kafka}}
+export KAFKA_PORT=${{KAFKA_PORT:-29092}}
+{gcp_creds_export}{gcp_project_export}python -m utils.producer_consumer.consumer --crypto {crypto} --model {model} --version {version}
 """
     
     # Write job file
@@ -244,6 +273,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
 
 
 

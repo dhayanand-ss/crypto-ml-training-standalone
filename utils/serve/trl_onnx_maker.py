@@ -187,15 +187,37 @@ def main():
     print("TRL ONNX Maker")
     print("=" * 60)
     
-    # Check if model exists
-    model_path = "models/finbert/finbert_grpo.pth"
-    if not os.path.exists(model_path):
-        logger.warning(f"Trained model not found at {model_path}")
-        logger.info("Using base FinBERT model for conversion")
-        logger.info("Note: For best results, train the model first")
-    
+    # Get model path from version manager
+    try:
+        from utils.model_version_manager import ModelVersionManager
+        manager = ModelVersionManager()
+        # Try to get latest version (v3), fallback to v2, then v1
+        model_path = manager.get_model_path("finbert", "3")
+        if not model_path:
+            model_path = manager.get_model_path("finbert", "2")
+        if not model_path:
+            model_path = manager.get_model_path("finbert", "1")
+            
+        if model_path:
+            logger.info(f"Found managed model at: {model_path}")
+        else:
+            # Fallback to legacy path if no managed version found
+            legacy_path = "models/finbert/finbert_grpo.pth"
+            if os.path.exists(legacy_path):
+                model_path = legacy_path
+                logger.info(f"Using legacy model path: {model_path}")
+            else:
+                logger.warning("No trained model found. Using base FinBERT.")
+                model_path = None
+
+    except ImportError:
+        logger.warning("ModelVersionManager not found. Using default paths.")
+        model_path = "models/finbert/finbert_grpo.pth"
+        if not os.path.exists(model_path):
+            model_path = None
+            
     # Convert to ONNX
-    success = convert_finbert_to_onnx()
+    success = convert_finbert_to_onnx(model_path=model_path)
     
     if success:
         logger.info("=" * 60)

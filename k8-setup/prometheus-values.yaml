@@ -50,6 +50,26 @@ grafana:
     limits:
       memory: 512Mi
       cpu: 200m
+  
+  # Additional volumes for dashboard provisioning (applied via ConfigMaps)
+  extraVolumes:
+    - name: dashboards
+      configMap:
+        name: grafana-dashboards
+    - name: dashboard-provider
+      configMap:
+        name: grafana-dashboard-provider
+    - name: datasource
+      configMap:
+        name: grafana-datasource
+  
+  extraVolumeMounts:
+    - name: dashboards
+      mountPath: /var/lib/grafana/dashboards/fastapi-ml
+    - name: dashboard-provider
+      mountPath: /etc/grafana/provisioning/dashboards
+    - name: datasource
+      mountPath: /etc/grafana/provisioning/datasources
 
 # AlertManager configuration
 alertmanager:

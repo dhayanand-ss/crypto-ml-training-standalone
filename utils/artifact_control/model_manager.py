@@ -288,11 +288,61 @@ class ModelManager:
     # -------------------
     # Model Loading
     # -------------------
+    def load_model_pyfunc(
+        self,
+        name: str,
+        version: Union[str, int, None] = None,
+        stage: Optional[str] = None
+    ) -> Any:
+        """
+        Load a model using mlflow.pyfunc.load_model (RECOMMENDED).
+        This is the universal loader that works with any model flavor.
+        
+        Args:
+            name: Registered model name
+            version: Specific model version (e.g., "6" or 6). If None, uses stage.
+            stage: Model stage (e.g., "Production", "Staging"). Used if version is None.
+            
+        Returns:
+            Loaded model (PyFuncModel)
+            
+        Examples:
+            # Load by version
+            model = manager.load_model_pyfunc("BTCUSDT_tst", version="6")
+            model = manager.load_model_pyfunc("BTCUSDT_tst", version=6)
+            
+            # Load by stage
+            model = manager.load_model_pyfunc("BTCUSDT_tst", stage="Production")
+        """
+        if not MLFLOW_AVAILABLE:
+            raise ImportError("MLflow is required for load_model_pyfunc")
+        
+        import mlflow.pyfunc
+        
+        # Build model URI
+        if version is not None:
+            model_uri = f"models:/{name}/{version}"
+        elif stage is not None:
+            model_uri = f"models:/{name}/{stage}"
+        else:
+            raise ValueError("Either version or stage must be provided")
+        
+        logger.info(f"Loading model with pyfunc: {model_uri}")
+        
+        try:
+            model = mlflow.pyfunc.load_model(model_uri)
+            logger.info(f"Successfully loaded model '{name}' using pyfunc")
+            return model
+        except Exception as e:
+            logger.error(f"Failed to load model with pyfunc: {e}")
+            raise
+    
     def load_model(
         self,
         name: str,
         version: Union[str, int],
-        model_type: str = "pytorch"
+        model_type: str = "pytorch",
+        use_pyfunc: bool = False
     ) -> Tuple[Any, str]:
         """
         Load a specific version of a registered model from MLflow.
@@ -301,12 +351,19 @@ class ModelManager:
             name: Registered model name
             version: Specific model version
             model_type: Model type ('pytorch', 'lightgbm', 'onnx', 'trl')
+            use_pyfunc: If True, use mlflow.pyfunc.load_model (RECOMMENDED)
             
         Returns:
             Tuple of (model, version) or ((model, tokenizer), version) for TRL
         """
         if not MLFLOW_AVAILABLE:
             raise ImportError("MLflow is required for load_model")
+        
+        # Use pyfunc loader if requested (RECOMMENDED)
+        if use_pyfunc:
+            logger.info(f"Using pyfunc loader (recommended) for {name} v{version}")
+            model = self.load_model_pyfunc(name, version=version)
+            return model, str(version)
         
         model_uri = f"models:/{name}/{version}"
         logger.info(f"Loading model URI: {model_uri}")

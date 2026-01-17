@@ -37,7 +37,7 @@ MAX_RETRY_TIME = 1200  # 20 minutes maximum time to retry finding available pods
 FIND_POD_SLEEP = 30  # 30 seconds between offer searches
 
 # GPU Requirements
-GPU_QUERY = "gpu_total_ram>=11 disk_space>=30 verified=True datacenter=True"
+GPU_QUERY = "gpu_total_ram>=11 disk_space>=30 verified=True datacenter=True cuda_max_good>=12.0 compute_cap>=610"
 
 # Docker Image - configurable via environment variable
 # Default to a public Python image (Vast AI instances have CUDA drivers pre-installed)
@@ -55,8 +55,43 @@ BLACKLIST_DIR = os.getenv(
 BLACKLIST_FILE = os.path.join(BLACKLIST_DIR, "blacklisted_machines.pkl")
 
 
+
+def load_env_file():
+    """Manually load .env file from project root."""
+    try:
+        # Find project root (up 2 levels from utils/utils/vast_ai_train.py -> utils/ -> root)
+        # Note: __file__ might be relative, ensure resolve
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent.parent
+        env_path = project_root / ".env"
+        
+        if env_path.exists():
+            logger.info(f"Loading .env file from {env_path}")
+            with open(env_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        key, value = line.split("=", 1)
+                        key = key.strip()
+                        value = value.strip().strip("'").strip('"')
+                        # Only set if not already set (allow override)
+                        if key not in os.environ:
+                            os.environ[key] = value
+    except Exception as e:
+        logger.warning(f"Failed to load .env file: {e}")
+
+# Load env file immediately when module is imported
+load_env_file()
+
+
 def get_vastai_api_key() -> str:
     """Get Vast.ai API key from environment variable."""
+    # Try loading again just in case
+    if not os.getenv("VASTAI_API_KEY"):
+        load_env_file()
+        
     key = os.getenv("VASTAI_API_KEY")
     if not key:
         raise ValueError("VASTAI_API_KEY environment variable not set.")
@@ -666,10 +701,12 @@ def build_startup_command() -> str:
         ])
         logger.info(f"Using custom Docker image {custom_image} - code should be pre-packaged")
     elif github_repo:
-        # Clone from GitHub - shortened commands
+        # Clone from GitHub - handle existing directories
+        # If directory exists but is not a valid git repo, remove it and clone fresh
         cmd_parts.extend([
-            f"cd /workspace && ([ -d {repo_name} ] || git clone {github_repo} {repo_name} || sleep 3 && git clone {github_repo} {repo_name})",
-            f"[ -d {project_root} ] || (echo 'ERROR: {project_root} missing' && exit 1)",
+            f"cd /workspace && if [ -d {repo_name} ]; then if [ ! -d {repo_name}/.git ]; then echo 'Removing incomplete directory...' && rm -rf {repo_name}; fi; fi",
+            f"cd /workspace && ([ -d {repo_name}/.git ] || git clone {github_repo} {repo_name} || (sleep 3 && rm -rf {repo_name} && git clone {github_repo} {repo_name}))",
+            f"[ -d {project_root} ] && [ -d {project_root}/.git ] || (echo 'ERROR: {project_root} missing or not a valid git repo' && exit 1)",
             f"cd {project_root} || exit 1",
             "pip install -U pip && [ -f requirements.txt ] && pip install -q -r requirements.txt || true",
         ])

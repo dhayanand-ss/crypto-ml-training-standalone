@@ -111,10 +111,53 @@ def run_all_training_sequential():
         print("\n✗ All training scripts failed")
         return 1
 
+def upload_results_to_gcs():
+    """Upload trained models to GCS for retrieval by Airflow worker."""
+    print("\n" + "=" * 60)
+    print("Uploading Results to GCS")
+    print("=" * 60)
+    
+    try:
+        from trainer.train_utils import S3Manager, S3_AVAILABLE
+        if not S3_AVAILABLE:
+            print("GCSManager not available. Skipping upload.")
+            return
+
+        gcs_manager = S3Manager(bucket='mlops-new')
+        models_dir = project_root / "models"
+        
+        if not models_dir.exists():
+            print("No models directory found to upload.")
+            return
+
+        # Create a zip of the models directory
+        print("Zipping models directory...")
+        import shutil
+        zip_name = project_root / "models_latest"
+        shutil.make_archive(str(zip_name), 'zip', str(models_dir))
+        zip_file = f"{zip_name}.zip"
+        
+        # Upload to GCS
+        print(f"Uploading {zip_file} to GCS...")
+        gcs_manager.upload_file(zip_file, "training_artifacts/models_latest.zip")
+        print("Upload complete!")
+        
+        # Clean up zip
+        os.remove(zip_file)
+        
+    except Exception as e:
+        print(f"Failed to upload results to GCS: {e}")
+        import traceback
+        traceback.print_exc()
 
 def main():
     """Main entry point - runs all training scripts sequentially"""
     exit_code = run_all_training_sequential()
+    
+    # Upload results if at least one script succeeded (or simply always upload what we have)
+    if exit_code == 0:
+        upload_results_to_gcs()
+        
     sys.exit(exit_code)
 
 

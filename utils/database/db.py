@@ -70,7 +70,7 @@ class CryptoDB:
 
         # Initialize collections and update with CSV
         # Limit initial sync to 100,000 rows to avoid long initialization times
-        max_initial_sync = int(os.getenv("MAX_INITIAL_SYNC_ROWS", "100000"))
+        max_initial_sync = int(os.getenv("MAX_INITIAL_SYNC_ROWS", "1000"))
         for coin in self.coins:
             self._create_table_if_not_exists(coin)
             self.update_from_csv(coin, max_rows_to_sync=max_initial_sync)

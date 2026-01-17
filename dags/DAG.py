@@ -295,9 +295,10 @@ def cleanup_on_timeout(context):
 def create_dag1():
     with DAG(
         'training_pipeline',
-        schedule='0 0 */5 * *',  # Every 5 days
+        schedule=None,  # Manual trigger only - no automatic scheduling
         start_date=start_date,
         catchup=False,
+        is_paused_upon_creation=True,  # Start paused - must be manually unpaused
         max_active_tasks=10,
         max_active_runs=1,
         dagrun_timeout=timedelta(hours=5),

@@ -18,12 +18,15 @@ services:
       - ./mlruns:/app/mlruns
       - ./mlartifacts:/app/mlartifacts
     restart: unless-stopped
+    depends_on:
+      mlflow:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
     networks:
       - fastapi-network
 
@@ -32,19 +35,27 @@ services:
     container_name: mlflow-server
     command: >
       sh -c "pip install mlflow && 
-             mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri file:///mlruns"
+             mlflow server --host 0.0.0.0 --port 5000 --serve-artifacts --backend-store-uri file:///mlruns --default-artifact-root /mlartifacts --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,* --uvicorn-opts '--forwarded-allow-ips=*'"
     ports:
       - "5000:5000"
     volumes:
       - ./mlruns:/mlruns
       - ./mlartifacts:/mlartifacts
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 5000)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
     networks:
       - fastapi-network
 
 networks:
   fastapi-network:
     driver: bridge
+
+
 
 
 

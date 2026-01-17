@@ -108,7 +108,7 @@ def download_full_history(symbol, interval="1m", start_str="2017-08-01", skip_st
             end_dt = start_dt + window_delta
             end_ts = int(end_dt.timestamp() * 1000)
         else:
-            print(f"⚠️  Invalid time_window format: {time_window}. Using 'now' as end time.")
+            print(f"[WARNING] Invalid time_window format: {time_window}. Using 'now' as end time.")
             end_ts = int(datetime.now().timestamp() * 1000)
     elif end_date:
         # Use specified end date
@@ -141,7 +141,7 @@ def download_full_history(symbol, interval="1m", start_str="2017-08-01", skip_st
     
     # Warn if very large dataset
     if estimated_total > 100000 and not max_records:
-        print(f"⚠️  Warning: Estimated {estimated_total:,} candles to fetch!")
+        print(f"[WARNING] Warning: Estimated {estimated_total:,} candles to fetch!")
         print(f"   This may take {estimated_total // 240:.0f} minutes or more.")
         print(f"   Consider using --max-records, --end-date, or --time-window to limit the fetch.")
         print(f"   Press Ctrl+C to cancel, or wait for it to complete...")
@@ -175,7 +175,7 @@ def download_full_history(symbol, interval="1m", start_str="2017-08-01", skip_st
             try:
                 candles = get_klines(symbol, interval, start_time=start_ts, end_time=request_end_ts)
             except Exception as e:
-                pbar.write(f"⚠️ Error: {e}, retrying in 5s...")
+                pbar.write(f"[ERROR] Error: {e}, retrying in 5s...")
                 time.sleep(5)
                 continue
             
@@ -221,12 +221,12 @@ def download_full_history(symbol, interval="1m", start_str="2017-08-01", skip_st
     
     except KeyboardInterrupt:
         pbar.close()
-        print("\n⚠️ Operation cancelled by user")
+        print("\n[INFO] Operation cancelled by user")
         if all_candles:
             print(f"  Saving {len(all_candles):,} candles fetched so far...")
     
     if not all_candles:
-        print(f"⚠️ No data found for {symbol}")
+        print(f"[WARNING] No data found for {symbol}")
         return pd.DataFrame()
     
     # Convert to DataFrame
@@ -272,43 +272,19 @@ def fetch_new_data(symbol, last_timestamp, interval="1m"):
     Returns:
         pd.DataFrame with new candles (open_time formatted as string)
     """
-    # Ensure last_timestamp is datetime if string
+    # Ensure last_timestamp is datetime
     if isinstance(last_timestamp, str):
         last_timestamp = pd.to_datetime(last_timestamp, format='%Y-%m-%d %H:%M:%S', utc=True)
     
-    start_time = int(last_timestamp.timestamp() * 1000)
-    candles = get_klines(symbol, interval, start_time=start_time)
+    # Add 1 second/minute to start from next candle
+    start_time = last_timestamp + pd.Timedelta(seconds=1) # approximate, download_full_history handles exact ts
+    start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
     
-    if not candles:
-        return pd.DataFrame()
+    print(f"Fetching new data from {start_str}...")
     
-    df = pd.DataFrame(candles, columns=[
-        "open_time", "open", "high", "low", "close", "volume",
-        "close_time", "quote_asset_volume", "trades", "taker_base",
-        "taker_quote", "ignore"
-    ])
-    
-    df = df.drop(columns=["close_time"])
-    df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
-    
-    # Filter to only new data (after last_timestamp)
-    df = df[df["open_time"] > last_timestamp]
-    
-    if df.empty:
-        return pd.DataFrame()
-    
-    # Format open_time as string per instructions
-    df["open_time"] = df["open_time"].dt.strftime('%Y-%m-%d %H:%M:%S')
-    
-    # Convert numeric columns
-    numeric_cols = ["open", "high", "low", "close", "volume", "taker_base", 
-                     "taker_quote", "quote_asset_volume", "ignore"]
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col])
-    
-    # Sort by open_time
-    df = df.sort_values("open_time").reset_index(drop=True)
+    # Use download_full_history to handle pagination
+    # We pass skip_start=True to ensure we don't get duplicates if start_str aligns with existing
+    df = download_full_history(symbol, interval, start_str=start_str, skip_start=True)
     
     return df
 
@@ -391,28 +367,32 @@ def load_or_fetch_price_data(symbol="BTCUSDT", interval="1m", start_str="2023-01
             
             if days_since_update > 1:
                 print(f"Data is {days_since_update} days old. Fetching updates...")
-                new_data = fetch_new_data(symbol, last_time, interval)
-                
-                if not new_data.empty:
-                    # Parse new_data open_time for comparison
-                    new_data_time = pd.to_datetime(new_data["open_time"], format='%Y-%m-%d %H:%M:%S', utc=True)
+                try:
+                    new_data = fetch_new_data(symbol, last_time, interval)
                     
-                    # Combine dataframes
-                    df = pd.concat([df, new_data], ignore_index=True)
-                    
-                    # Convert all open_time to datetime for sorting and deduplication
-                    df["open_time"] = pd.to_datetime(df["open_time"], format='%Y-%m-%d %H:%M:%S', utc=True)
-                    
-                    # Deduplicate by open_time (not date!) - keep last
-                    df = df.drop_duplicates(subset=["open_time"], keep="last")
-                    
-                    # Sort and format back to string
-                    df = df.sort_values("open_time").reset_index(drop=True)
-                    df["open_time"] = df["open_time"].dt.strftime('%Y-%m-%d %H:%M:%S')
-                    
-                    # Save updated data
-                    df.to_csv(csv_path, index=False)
-                    print(f"Updated data saved to {csv_path}. Total rows: {len(df)}")
+                    if not new_data.empty:
+                        # Parse new_data open_time for comparison
+                        new_data_time = pd.to_datetime(new_data["open_time"], format='%Y-%m-%d %H:%M:%S', utc=True)
+                        
+                        # Combine dataframes
+                        df = pd.concat([df, new_data], ignore_index=True)
+                        
+                        # Convert all open_time to datetime for sorting and deduplication
+                        df["open_time"] = pd.to_datetime(df["open_time"], format='%Y-%m-%d %H:%M:%S', utc=True)
+                        
+                        # Deduplicate by open_time (not date!) - keep last
+                        df = df.drop_duplicates(subset=["open_time"], keep="last")
+                        
+                        # Sort and format back to string
+                        df = df.sort_values("open_time").reset_index(drop=True)
+                        df["open_time"] = df["open_time"].dt.strftime('%Y-%m-%d %H:%M:%S')
+                        
+                        # Save updated data
+                        df.to_csv(csv_path, index=False)
+                        print(f"Updated data saved to {csv_path}. Total rows: {len(df)}")
+                except Exception as e:
+                    print(f"[WARNING] Warning: Failed to fetch updates: {e}")
+                    print("Returning existing data without updates.")
         
         # Ensure open_time is string format (if it was parsed)
         if "open_time" in df.columns and hasattr(df["open_time"].iloc[0] if len(df) > 0 else None, 'strftime'):
@@ -436,7 +416,7 @@ def load_or_fetch_price_data(symbol="BTCUSDT", interval="1m", start_str="2023-01
         validate_price_data(df_temp)
         print("Data validation passed")
     except AssertionError as e:
-        print(f"⚠️ Warning: Data validation issue: {e}")
+        print(f"[WARNING] Warning: Data validation issue: {e}")
         print("Continuing anyway...")
     
     # Save to CSV (open_time is already formatted as string)
@@ -560,7 +540,7 @@ Examples:
         )
         
         if df.empty:
-            print("⚠️ Warning: No data fetched")
+            print("[WARNING] Warning: No data fetched")
             return 1
         
         print()

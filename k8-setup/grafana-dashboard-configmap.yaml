@@ -1,0 +1,264 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: prometheus
+data:
+  fastapi-ml-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "FastAPI ML Service Dashboard",
+        "tags": ["fastapi", "ml", "prometheus"],
+        "timezone": "browser",
+        "schemaVersion": 16,
+        "version": 1,
+        "refresh": "30s",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Total Predictions",
+            "type": "stat",
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(rate(ml_predictions_total[5m]))",
+                "legendFormat": "Predictions/sec",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "ops",
+                "decimals": 2
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "Prediction Latency (p95)",
+            "type": "stat",
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(ml_predictions_duration_seconds_bucket[5m])) by (le, model_name, version))",
+                "legendFormat": "{{model_name}} v{{version}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "unit": "s",
+                "decimals": 3,
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"value": null, "color": "green"},
+                    {"value": 0.1, "color": "yellow"},
+                    {"value": 0.5, "color": "red"}
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "id": 3,
+            "title": "Active Models",
+            "type": "stat",
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(ml_active_models)",
+                "legendFormat": "Active Models",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short",
+                "decimals": 0
+              }
+            }
+          },
+          {
+            "id": 4,
+            "title": "Model Load Errors",
+            "type": "stat",
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(increase(ml_model_load_errors_total[5m]))",
+                "legendFormat": "Errors",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "unit": "short",
+                "decimals": 0,
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"value": null, "color": "green"},
+                    {"value": 1, "color": "red"}
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "id": 5,
+            "title": "Predictions Over Time",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+            "targets": [
+              {
+                "expr": "sum(rate(ml_predictions_total[1m])) by (model_name, status)",
+                "legendFormat": "{{model_name}} - {{status}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "ops",
+                "decimals": 2
+              }
+            }
+          },
+          {
+            "id": 6,
+            "title": "Prediction Latency Distribution",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(ml_predictions_duration_seconds_bucket[5m])) by (le, model_name))",
+                "legendFormat": "{{model_name}} p50",
+                "refId": "A"
+              },
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(ml_predictions_duration_seconds_bucket[5m])) by (le, model_name))",
+                "legendFormat": "{{model_name}} p95",
+                "refId": "B"
+              },
+              {
+                "expr": "histogram_quantile(0.99, sum(rate(ml_predictions_duration_seconds_bucket[5m])) by (le, model_name))",
+                "legendFormat": "{{model_name}} p99",
+                "refId": "C"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "s",
+                "decimals": 3
+              }
+            }
+          },
+          {
+            "id": 7,
+            "title": "HTTP Request Rate",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total[1m])) by (method, status_code)",
+                "legendFormat": "{{method}} {{status_code}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "ops",
+                "decimals": 2
+              }
+            }
+          },
+          {
+            "id": 8,
+            "title": "HTTP Request Duration",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, method))",
+                "legendFormat": "{{method}} p95",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "s",
+                "decimals": 3
+              }
+            }
+          },
+          {
+            "id": 9,
+            "title": "Predictions by Model",
+            "type": "bargauge",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+            "targets": [
+              {
+                "expr": "sum(increase(ml_predictions_total[1h])) by (model_name)",
+                "legendFormat": "{{model_name}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short",
+                "decimals": 0
+              }
+            }
+          },
+          {
+            "id": 10,
+            "title": "Success vs Error Rate",
+            "type": "piechart",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+            "targets": [
+              {
+                "expr": "sum(increase(ml_predictions_total[1h])) by (status)",
+                "legendFormat": "{{status}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"}
+              }
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "timepicker": {},
+        "templating": {
+          "list": []
+        },
+        "annotations": {
+          "list": []
+        }
+      }
+    }
+
+
+
+
+
+
+
+
+
+

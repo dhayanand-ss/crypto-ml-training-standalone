@@ -82,6 +82,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-airflow-secret-key-change-in-production}
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
@@ -162,14 +163,15 @@ services:
       JOBS_DIR: /opt/airflow/custom_persistent_shared/jobs
       DATA_PATH: /opt/airflow/data/prices
       LOG_DIR: /opt/airflow/custom_persistent_shared/logs
-      KAFKA_HOST: ${KAFKA_HOST:-localhost}
+      KAFKA_HOST: ${KAFKA_HOST:-kafka}
+      KAFKA_PORT: ${KAFKA_PORT:-29092}
       # GCP Configuration
       # Priority 1: Embedded JSON (set GCP_CREDENTIALS_JSON with full JSON content) - avoids file path issues
       # Priority 2: File path (absolute paths required for Airflow)
       # NOTE: Do NOT commit credentials to git. Set GCP_CREDENTIALS_JSON as environment variable at runtime.
       GCP_CREDENTIALS_JSON: ${GCP_CREDENTIALS_JSON:-}  # Set via environment variable, not in this file
-      GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH:-/opt/airflow/gcp-credentials.json}
-      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/opt/airflow/gcp-credentials.json}
+      GCP_CREDENTIALS_PATH: /opt/airflow/gcp-credentials.json
+      GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp-credentials.json
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-dhaya123-335710}
       FASTAPI_URL: ${FASTAPI_URL:-http://fastapi-ml:8000/predict}
       # Add other environment variables as needed
@@ -194,7 +196,15 @@ services:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - default
+      - kafka-network
     restart: always
+
+networks:
+  kafka-network:
+    external: true
+    name: k8-setup_kafka-network
 
 volumes:
   postgres-db-volume:

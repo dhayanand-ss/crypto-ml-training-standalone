@@ -84,6 +84,15 @@ Write-Host ""
 Write-Host "Applying Grafana configuration..." -ForegroundColor Yellow
 kubectl apply -f grafana-config.yaml
 
+# Apply Grafana datasource configuration
+Write-Host "Applying Grafana datasource..." -ForegroundColor Yellow
+kubectl apply -f grafana-datasource.yaml
+
+# Apply Grafana dashboard ConfigMaps
+Write-Host "Applying Grafana dashboards..." -ForegroundColor Yellow
+kubectl apply -f grafana-dashboard-configmap.yaml
+kubectl apply -f grafana-dashboard-provider.yaml
+
 # Restart Grafana to apply config
 kubectl rollout restart deployment prometheus-grafana -n prometheus
 
@@ -133,7 +142,10 @@ try {
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Apply ServiceMonitor for FastAPI: kubectl apply -f fast-api.yaml" -ForegroundColor White
-Write-Host "  2. Configure Grafana data source to point to Prometheus" -ForegroundColor White
-Write-Host "  3. Import dashboards in Grafana" -ForegroundColor White
+Write-Host "  2. Wait for Grafana to restart (30-60 seconds)" -ForegroundColor White
+Write-Host "  3. Access Grafana and verify dashboard is available" -ForegroundColor White
+Write-Host ""
+Write-Host "For detailed instructions on viewing graphs, see:" -ForegroundColor Yellow
+Write-Host "  GRAFANA_VIEWING_GUIDE.md" -ForegroundColor White
 Write-Host ""
 

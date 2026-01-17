@@ -70,6 +70,15 @@ echo ""
 echo "Applying Grafana configuration..."
 kubectl apply -f grafana-config.yaml
 
+# Apply Grafana datasource configuration
+echo "Applying Grafana datasource..."
+kubectl apply -f grafana-datasource.yaml
+
+# Apply Grafana dashboard ConfigMaps
+echo "Applying Grafana dashboards..."
+kubectl apply -f grafana-dashboard-configmap.yaml
+kubectl apply -f grafana-dashboard-provider.yaml
+
 # Restart Grafana to apply config
 kubectl rollout restart deployment prometheus-grafana -n prometheus
 
@@ -110,9 +119,13 @@ fi
 echo ""
 echo "Next steps:"
 echo "  1. Apply ServiceMonitor for FastAPI: kubectl apply -f fast-api.yaml"
-echo "  2. Configure Grafana data source to point to Prometheus"
-echo "  3. Import dashboards in Grafana"
+echo "  2. Wait for Grafana to restart (30-60 seconds)"
+echo "  3. Access Grafana and verify dashboard is available"
 echo ""
+echo "For detailed instructions on viewing graphs, see:"
+echo "  GRAFANA_VIEWING_GUIDE.md"
+echo ""
+
 
 
 

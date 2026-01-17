@@ -17,11 +17,11 @@ services:
       - RELOAD=false
     volumes:
       - ./models:/app/models
-      - ./mlruns:/app/mlruns
-      - ./mlartifacts:/app/mlartifacts
+      - ./mlruns:/mlruns
+      - ./mlartifacts:/mlartifacts
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -36,7 +36,8 @@ services:
       context: .
       dockerfile: Dockerfile.mlflow
     container_name: mlflow-server
-    command: mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri file:///mlruns --default-artifact-root /mlartifacts
+    command: >
+      sh -c "mlflow server --host 0.0.0.0 --port 5000 --serve-artifacts --backend-store-uri file:///mlruns --default-artifact-root /mlartifacts --allowed-hosts *,mlflow,mlflow:5000 --uvicorn-opts '--forwarded-allow-ips=*'"
     ports:
       - "5000:5000"
     volumes:
@@ -84,6 +85,21 @@ services:
     depends_on:
       - prometheus
 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
 networks:
   monitoring-network:
     driver: bridge
@@ -91,4 +107,5 @@ networks:
 volumes:
   prometheus-data:
   grafana-data:
+
 

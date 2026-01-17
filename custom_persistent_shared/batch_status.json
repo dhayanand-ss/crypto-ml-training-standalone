@@ -1,0 +1,23 @@
+{
+  "lightgbm_BTCUSDT": {
+    "model": "lightgbm",
+    "coin": "BTCUSDT",
+    "state": "PENDING",
+    "updated_at": "2026-01-17T02:11:50.770822+00:00",
+    "error_message": null
+  },
+  "tst_BTCUSDT": {
+    "model": "tst",
+    "coin": "BTCUSDT",
+    "state": "PENDING",
+    "updated_at": "2026-01-17T02:11:50.770877+00:00",
+    "error_message": null
+  },
+  "trl_ALL": {
+    "model": "trl",
+    "coin": "ALL",
+    "state": "PENDING",
+    "updated_at": "2026-01-17T02:11:50.770889+00:00",
+    "error_message": null
+  }
+}

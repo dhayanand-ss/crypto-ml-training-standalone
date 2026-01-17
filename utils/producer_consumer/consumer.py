@@ -24,7 +24,14 @@ from utils.producer_consumer.consumer_utils import state_checker, state_write, g
 from utils.producer_consumer.logger import setup_logger
 
 # Configuration
-KAFKA_BROKER = f"{os.environ.get('KAFKA_HOST', 'localhost')}:9092"
+# Support both host:port format and host-only format
+_kafka_host = os.environ.get('KAFKA_HOST', 'localhost')
+if ':' in _kafka_host:
+    KAFKA_BROKER = _kafka_host  # Already includes port
+else:
+    # Use internal port (29092) if connecting from Docker network, external (9092) otherwise
+    _kafka_port = os.environ.get('KAFKA_PORT', '9092')
+    KAFKA_BROKER = f"{_kafka_host}:{_kafka_port}"
 seq_len = 30  # Sequence length for time series models
 url = os.getenv("FASTAPI_URL", "http://fastapi-ml:8000/predict")
 DATA_PATH = os.getenv("DATA_PATH", "/opt/airflow/custom_persistent_shared/data")

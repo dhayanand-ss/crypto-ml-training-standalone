@@ -301,18 +301,49 @@ Examples:
                 print(f"Warning: Failed to update status: {update_error}")
         sys.exit(1)
     
-    # Save model
-    print("\nSaving model...")
+    # Save model via ModelVersionManager
+    print("\nSaving model via Version Manager...")
     try:
-        os.makedirs(args.output_dir, exist_ok=True)
-        model_path = os.path.join(args.output_dir, "finbert_grpo.pth")
-        tokenizer_path = os.path.join(args.output_dir, "tokenizer")
+        from utils.model_version_manager import ModelVersionManager
+        version_manager = ModelVersionManager()
         
-        analyzer.save_model(model_path, tokenizer_path)
-        print(f"Model saved to {model_path}")
-        print(f"Tokenizer saved to {tokenizer_path}")
+        # Create a temporary directory for the new model
+        temp_dir = Path("models/temp_finbert_new")
+        if temp_dir.exists():
+            import shutil
+            shutil.rmtree(temp_dir)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        model_filename = "finbert_grpo.pth"
+        temp_model_path = temp_dir / model_filename
+        temp_tokenizer_path = temp_dir / "tokenizer"
+        
+        # Save to temp location first
+        analyzer.save_model(str(temp_model_path), str(temp_tokenizer_path))
+        print(f"Model staged at {temp_model_path}")
+        
+        # Register with manager (this moves it to v3 and handles rotation)
+        version = version_manager.register_new_model(
+            model_type="finbert",
+            model_path=str(temp_model_path),
+            metadata={
+                "coin": args.coin,
+                "epochs": args.epochs,
+                "val_accuracy": history['val_accuracy'][-1] if history and history['val_accuracy'] else None,
+                "train_loss": history['train_loss'][-1] if history else None
+            }
+        )
+        
+        print(f"Model successfully registered as finbert v{version}")
+        
+        # Cleanup temp
+        import shutil
+        shutil.rmtree(temp_dir)
+        
     except Exception as e:
         print(f"Warning: Failed to save model: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Print training summary
     print("\n" + "=" * 60)

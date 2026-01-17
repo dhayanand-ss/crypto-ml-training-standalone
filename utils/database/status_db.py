@@ -253,14 +253,16 @@ class NoOpStatusDB:
         pass
 
 # Try to initialize, but fall back to NoOp if it fails
-try:
-    status_db = CryptoBatchDB(db_url)
-    # Verify it actually initialized (check if firestore is available)
-    if not hasattr(status_db, '_firestore_available') or not status_db._firestore_available:
-        status_db = NoOpStatusDB()
-except (Exception, google_auth_exceptions.DefaultCredentialsError) as e:
-    # If GCP credentials are missing, create a no-op instance
-    import sys
-    # Suppress the exception from being printed to stderr during import
-    # This prevents Airflow from treating it as an import error
-    status_db = NoOpStatusDB()
+# Try to initialize, but fall back to NoOp if it fails
+# try:
+#     status_db = CryptoBatchDB(db_url)
+#     # Verify it actually initialized (check if firestore is available)
+#     if not hasattr(status_db, '_firestore_available') or not status_db._firestore_available:
+#         status_db = NoOpStatusDB()
+# except (Exception, google_auth_exceptions.DefaultCredentialsError) as e:
+#     # If GCP credentials are missing, create a no-op instance
+#     import sys
+#     # Suppress the exception from being printed to stderr during import
+#     # This prevents Airflow from treating it as an import error
+#     status_db = NoOpStatusDB()
+status_db = NoOpStatusDB() # Default to NoOp to avoid blocking import

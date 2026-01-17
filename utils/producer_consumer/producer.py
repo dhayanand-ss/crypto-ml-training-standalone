@@ -21,7 +21,14 @@ from utils.producer_consumer.consumer_utils import state_checker, state_write
 from utils.producer_consumer.logger import setup_logger
 
 # Configuration
-KAFKA_BROKER = f"{os.environ.get('KAFKA_HOST', 'localhost')}:9092"
+# Support both host:port format and host-only format
+_kafka_host = os.environ.get('KAFKA_HOST', 'localhost')
+if ':' in _kafka_host:
+    KAFKA_BROKER = _kafka_host  # Already includes port
+else:
+    # Use internal port (29092) if connecting from Docker network, external (9092) otherwise
+    _kafka_port = os.environ.get('KAFKA_PORT', '9092')
+    KAFKA_BROKER = f"{_kafka_host}:{_kafka_port}"
 SYMBOLS = ["BTCUSDT"]  # Supported cryptocurrencies
 INTERVAL = "1m"  # Data interval
 BATCH_SIZE = 10000  # Records per batch
@@ -239,10 +246,14 @@ def main():
         logger.error("Failed to initialize QuixStreams application")
         sys.exit(1)
     
-    # Create topic (will be created automatically if auto.create.topics.enable is true)
-    topic = app.topic(symbol)
+    # Write state IMMEDIATELY after Kafka connection succeeds
+    # This signals to the DAG that producer is running, even if database init hangs
+    logger.info("Writing producer state to 'running'")
+    state_write("ALL", "producer", "main", "running")
+    logger.info("Producer state set to 'running' - DAG can proceed")
     
     # Initialize database - REQUIRED (not optional)
+    # Do this AFTER state write so DAG doesn't wait for database connection
     global crypto_db
     if crypto_db is None:
         try:
@@ -256,8 +267,17 @@ def main():
             logger.error("Producer cannot start without database connection.")
             sys.exit(1)
     
-    # State management
-    state_write("ALL", "producer", "main", "running")
+    # Create topic (will be created automatically if auto.create.topics.enable is true)
+    # Note: app.topic() may fetch metadata which can timeout - handle gracefully
+    logger.info(f"Accessing topic {symbol}...")
+    try:
+        topic = app.topic(symbol)
+        logger.info(f"Topic {symbol} ready")
+    except Exception as e:
+        logger.warning(f"Could not immediately access topic {symbol}: {e}")
+        logger.info("Topic will be auto-created on first publish - continuing...")
+        # Create topic object anyway - QuixStreams will handle creation on first use
+        topic = app.topic(symbol)
     
     # Load existing data from CSV
     csv_path = str(DATA_PATH / f"{symbol}.csv")

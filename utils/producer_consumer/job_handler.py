@@ -93,11 +93,15 @@ class JobHandler(FileSystemEventHandler):
             if 'producer' in command:
                 # Producer command
                 logger.info(f"Executing producer command: {command}")
+                # Capture output to log file for debugging
+                log_file = os.path.join(JOBS_DIR, "producer.log")
+                with open(log_file, 'a') as f:
+                    f.write(f"\n=== Producer started at {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
                 process = subprocess.Popen(
                     command,
                     shell=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=open(log_file, 'a'),
+                    stderr=subprocess.STDOUT,
                     start_new_session=True
                 )
                 self.processes[f"producer"] = process
@@ -173,6 +177,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
 
 
 

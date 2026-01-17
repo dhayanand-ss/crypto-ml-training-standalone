@@ -231,6 +231,14 @@ class ModelVersionManager:
             # Copy scaler file
             for file in source_dir.glob("*scaler*.pkl"):
                 shutil.copy2(file, dest_dir / file.name)
+        elif model_type == "finbert":
+            # Copy tokenizer directory
+            tokenizer_src = source_dir / "tokenizer"
+            if tokenizer_src.exists() and tokenizer_src.is_dir():
+                tokenizer_dest = dest_dir / "tokenizer"
+                if tokenizer_dest.exists():
+                    shutil.rmtree(tokenizer_dest)
+                shutil.copytree(tokenizer_src, tokenizer_dest)
     
     def get_model_path(self, model_type: str, version: str) -> Optional[str]:
         """
