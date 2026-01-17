@@ -329,8 +329,8 @@ Examples:
             metadata={
                 "coin": args.coin,
                 "epochs": args.epochs,
-                "val_accuracy": history['val_accuracy'][-1] if history and history['val_accuracy'] else None,
-                "train_loss": history['train_loss'][-1] if history else None
+                "val_accuracy": history['val_accuracy'][-1] if history and history.get('val_accuracy') else None,
+                "train_loss": history['train_loss'][-1] if history and history.get('train_loss') else None
             }
         )
         
@@ -350,10 +350,13 @@ Examples:
     print("Training Summary")
     print("=" * 60)
     if history:
-        print(f"Final Training Loss: {history['train_loss'][-1]:.4f}")
-        print(f"Final Surrogate Loss: {history['train_surrogate'][-1]:.4f}")
-        print(f"Final KL Divergence: {history['train_kl'][-1]:.4f}")
-        if history['val_accuracy']:
+        if history.get('train_loss'):
+            print(f"Final Training Loss: {history['train_loss'][-1]:.4f}")
+        if history.get('train_surrogate'):
+            print(f"Final Surrogate Loss: {history['train_surrogate'][-1]:.4f}")
+        if history.get('train_kl'):
+            print(f"Final KL Divergence: {history['train_kl'][-1]:.4f}")
+        if history.get('val_accuracy'):
             print(f"Final Validation Accuracy: {history['val_accuracy'][-1]:.4f}")
     print(f"Total Training Time: {time.time() - start_time:.1f}s")
     print("=" * 60)
