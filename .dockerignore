@@ -1,0 +1,93 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+logs/*
+logs/**
+logs/**/*
+**/logs/**
+logs
+*.log
+mlruns/
+mlartifacts/
+*.txt
+*.ps1
+*.sh
+*.json
+!requirements.txt
+!dhaya123-335710-039eabaad669.json
+
+# Data (include CSVs, ignore subdirs)
+data/articles/
+data/predictions/
+data/prices/
+models/
+!models/**/*.py
+!models/*.py
+
+# Airflow
+dags/__pycache__/
+logs
+logs/
+logs/**
+**/logs/**
+
+# Documentation
+*.md
+!README.md
+*.pdf
+ *.pdf
+ *.onnx
+ !dummy_model_tmp.onnx
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Credentials
+*.json
+!requirements.txt
+!dhaya123-335710-039eabaad669.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+
+
+
+
+
+
+
+
+
+
+

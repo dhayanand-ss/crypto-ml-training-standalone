@@ -1,0 +1,24 @@
+# DAG Implementation Dependencies
+
+# Google Cloud Firestore (native GCP client)
+google-cloud-firestore>=2.11.0
+
+# Vast.ai CLI
+vastai>=0.1.0
+
+# System utilities
+psutil>=5.9.0
+
+
+
+
+
+
+
+
+
+
+
+
+
+

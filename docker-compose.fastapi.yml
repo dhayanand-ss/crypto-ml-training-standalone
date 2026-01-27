@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  fastapi-ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.fastapi
+    container_name: fastapi-ml
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - RELOAD=false
+    volumes:
+      - ./models:/app/models
+      - ./mlruns:/app/mlruns
+      - ./mlartifacts:/app/mlartifacts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - fastapi-network
+
+  mlflow:
+    image: python:3.10-slim
+    container_name: mlflow-server
+    command: >
+      sh -c "pip install mlflow && 
+             mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri file:///mlruns"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlruns
+      - ./mlartifacts:/mlartifacts
+    restart: unless-stopped
+    networks:
+      - fastapi-network
+
+networks:
+  fastapi-network:
+    driver: bridge
+
+
+
+
+
+
+
+
+
+
+
+

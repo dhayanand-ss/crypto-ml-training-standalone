@@ -1,0 +1,45 @@
+# Dockerfile for FastAPI ML Inference Service
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip first (cached layer)
+RUN pip install --no-cache-dir --upgrade pip
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies with pip cache
+# Note: PyTorch and transformers are large (~2GB), this will take 5-10 minutes
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project files
+COPY . .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PORT=8000
+ENV HOST=0.0.0.0
+ENV MLFLOW_TRACKING_URI=http://localhost:5000
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run FastAPI server
+CMD ["python", "start_fastapi_server.py"]
+
+
+
+
+
+

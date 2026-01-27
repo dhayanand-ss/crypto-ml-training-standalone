@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: producer-consumer
+  labels:
+    app: producer-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: producer-consumer
+  template:
+    metadata:
+      labels:
+        app: producer-consumer
+    spec:
+      containers:
+      - name: producer-consumer
+        image: frozenwolf2003/producer_consumer:latest
+        env:
+        - name: KAFKA_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: MLFLOW_TRACKING_URI
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: tracking-uri
+        - name: MLFLOW_TRACKING_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: username
+        - name: MLFLOW_TRACKING_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: password
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /opt/airflow/custom_persistent_shared
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: shared-pvc
+
+
+
+
+
+
+

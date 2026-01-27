@@ -1,0 +1,29 @@
+# FastAPI and ML Inference Service Dependencies
+# These are the core dependencies needed for the FastAPI ML inference service
+
+# FastAPI and server
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+
+# Prometheus metrics
+prometheus-client>=0.17.0
+
+# ONNX Runtime for model inference
+onnxruntime>=1.15.0
+
+# MLflow for model registry
+mlflow>=2.0.0
+
+# Core ML libraries
+numpy>=1.21.0
+pandas>=1.3.0
+
+# Optional: For ONNX model handling
+onnx>=1.14.0
+
+# Optional: For GCS/S3 storage (if needed)
+google-cloud-storage>=2.10.0
+
+
+

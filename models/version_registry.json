@@ -1,0 +1,89 @@
+{
+  "lightgbm": {
+    "v1": {
+      "path": "models\\lightgbm\\v1\\lgb_model.txt",
+      "created_at": "2024-01-01T00:00:00",
+      "migrated": true,
+      "metadata": {
+        "source": "models\\lgb_model.txt",
+        "migrated_at": "2024-01-01T00:00:00"
+      }
+    },
+    "v2": {
+      "path": "models\\lightgbm\\v2\\lgb_model.txt",
+      "created_at": "2024-01-01T00:00:00",
+      "created_from_v1": true,
+      "metadata": {
+        "source": "models\\lgb_model.txt",
+        "migrated_at": "2024-01-01T00:00:00"
+      }
+    },
+    "v3": {
+      "path": "models\\lightgbm\\v3\\lgb_model.txt",
+      "created_at": "2025-11-13T07:23:42.592451",
+      "metadata": {
+        "accuracy": 0.4579988016776513,
+        "trained_at": "2025-11-13T07:23:42.582332"
+      }
+    }
+  },
+  "tst": {
+    "v1": {
+      "path": "models\\tst\\v1\\tst_model.pth",
+      "created_at": "2024-01-01T00:00:00",
+      "migrated": true,
+      "metadata": {
+        "source": "models\\tst_model.pth",
+        "migrated_at": "2024-01-01T00:00:00"
+      }
+    },
+    "v2": {
+      "path": "models\\tst\\v2\\tst_model.pth",
+      "created_at": "2024-01-01T00:00:00",
+      "created_from_v1": true,
+      "metadata": {
+        "source": "models\\tst_model.pth",
+        "migrated_at": "2024-01-01T00:00:00"
+      }
+    },
+    "v3": {
+      "path": "models\\tst\\v3\\tst_model.pth",
+      "created_at": "2025-11-13T07:35:32.445291",
+      "metadata": {
+        "metrics": {
+          "accuracy": 0.42231970789800394
+        },
+        "trained_at": "2025-11-13T07:35:32.441215"
+      }
+    }
+  },
+  "finbert": {
+    "v1": null,
+    "v2": null,
+    "v3": null
+  },
+  "ensemble": {
+    "v1": null,
+    "v2": null,
+    "v3": null
+  },
+  "metadata": {
+    "last_updated": "2025-11-13T08:17:10.152069",
+    "version_history": [
+      {
+        "model_type": "lightgbm",
+        "action": "new_model_registered",
+        "timestamp": "2025-11-13T07:23:42.592468",
+        "new_version": "3",
+        "previous_v3_promoted_to_v2": false
+      },
+      {
+        "model_type": "tst",
+        "action": "new_model_registered",
+        "timestamp": "2025-11-13T07:35:32.445304",
+        "new_version": "3",
+        "previous_v3_promoted_to_v2": false
+      }
+    ]
+  }
+}
