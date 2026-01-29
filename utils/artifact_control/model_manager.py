@@ -32,6 +32,7 @@ class ModelManager:
     - GCS storage integration
     - Model retention policies
     - Production stage management
+    - Local artifact caching
     """
     
     def __init__(
@@ -39,7 +40,8 @@ class ModelManager:
         tracking_uri: Optional[str] = None,
         bucket: str = "mlops-new",
         credentials_path: Optional[str] = None,
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        cache_dir: str = "models_cache"
     ):
         """
         Initialize ModelManager.
@@ -49,12 +51,14 @@ class ModelManager:
             bucket: GCS bucket name (default: "mlops-new")
             credentials_path: Path to GCS service account JSON file (optional)
             project_id: GCP project ID (optional)
+            cache_dir: Directory for local model cache
         """
         if not MLFLOW_AVAILABLE:
             raise ImportError("MLflow is required for ModelManager. Install with: pip install mlflow")
         
         self.client = MlflowClient(tracking_uri)
         self.bucket = bucket
+        self.cache_dir = os.path.join(os.getcwd(), cache_dir)
         
         # Initialize GCS client for cleanup operations
         try:
@@ -286,8 +290,71 @@ class ModelManager:
             raise
     
     # -------------------
-    # Model Loading
+    # Model Loading & Caching
     # -------------------
+    def _resolve_model_path(self, name: str, version: Union[str, int]) -> str:
+        """
+        Resolve local path for model artifacts, using cache if available.
+        Downloads from MLflow/GCS if not cached.
+        """
+        version_str = str(version)
+        cache_path = os.path.join(self.cache_dir, name, version_str)
+        
+        # Check if valid cache exists
+        if os.path.exists(cache_path) and os.listdir(cache_path):
+            logger.info(f"Using cached artifacts from: {cache_path}")
+            return cache_path
+            
+        logger.info(f"Artifacts not cached for {name} v{version}. Downloading...")
+        
+        try:
+            # Get model version info to find source
+            version_obj = self.client.get_model_version(name, version_str)
+            run_id = version_obj.run_id
+            
+            import mlflow
+            downloaded_path = None
+            
+            # 1. Try downloading from source URI (GCS)
+            try:
+                logger.info(f"Downloading from source URI: {version_obj.source}")
+                downloaded_path = mlflow.artifacts.download_artifacts(artifact_uri=version_obj.source)
+            except Exception as e:
+                logger.warning(f"Download from source failed: {e}. Trying run_id...")
+                # 2. Fallback to run_id
+                downloaded_path = self.client.download_artifacts(run_id, name)
+            
+            if not downloaded_path:
+                raise FileNotFoundError("Failed to download artifacts")
+                
+            logger.info(f"Downloaded raw artifacts to: {downloaded_path}")
+            
+            # Find actual model root (sometimes nested)
+            actual_model_path = downloaded_path
+            if os.path.basename(downloaded_path) != name:
+                for root, dirs, files in os.walk(downloaded_path):
+                    if os.path.basename(root) == name:
+                        actual_model_path = root
+                        break
+                else:
+                    potential = os.path.join(downloaded_path, name)
+                    if os.path.exists(potential):
+                        actual_model_path = potential
+            
+            # Move/Copy to cache
+            import shutil
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            if os.path.exists(cache_path):
+                shutil.rmtree(cache_path)
+            
+            shutil.copytree(actual_model_path, cache_path)
+            logger.info(f"Cached artifacts to: {cache_path}")
+            return cache_path
+            
+        except Exception as e:
+            logger.error(f"Failed to resolve/cache model path: {e}")
+            raise
+
     def load_model(
         self,
         name: str,
@@ -295,28 +362,21 @@ class ModelManager:
         model_type: str = "pytorch"
     ) -> Tuple[Any, str]:
         """
-        Load a specific version of a registered model from MLflow.
-        
-        Args:
-            name: Registered model name
-            version: Specific model version
-            model_type: Model type ('pytorch', 'lightgbm', 'onnx', 'trl')
-            
-        Returns:
-            Tuple of (model, version) or ((model, tokenizer), version) for TRL
+        Load a specific version of a registered model from MLflow (using local cache).
         """
         if not MLFLOW_AVAILABLE:
             raise ImportError("MLflow is required for load_model")
         
-        model_uri = f"models:/{name}/{version}"
-        logger.info(f"Loading model URI: {model_uri}")
+        import mlflow
         
-        try:
-            model_info = mlflow.models.get_model_info(model_uri)
-            logger.info(f"Model info: {list(model_info.flavors.keys())}")
-        except Exception as e:
-            logger.error(f"Failed to get model info: {e}")
-            raise
+        # Resolve local path (checks cache or downloads)
+        local_path = self._resolve_model_path(name, version)
+        # URI for local loading is just the path
+        # Note: mlflow.pytorch.load_model works with local paths
+        from pathlib import Path
+        model_uri = Path(local_path).as_uri()
+        
+        logger.info(f"Loading {model_type} model from local path: {model_uri}")
         
         if model_type.lower() == "pytorch":
             import mlflow.pytorch
@@ -334,12 +394,10 @@ class ModelManager:
             model_dict = mlflow.transformers.load_model(model_uri, return_type='components')
             model = model_dict["model"]
             tokenizer = model_dict["tokenizer"]
-            logger.info(f"Loaded {model_type} model '{name}' version {version}")
             return (model, tokenizer), version
         else:
             raise ValueError(f"Unsupported model_type: {model_type}")
         
-        logger.info(f"Loaded {model_type} model '{name}' version {version}")
         return model, version
     
     def load_latest_model(self, name: str, model_type: str = "pytorch") -> Tuple[Any, Optional[str]]:
@@ -386,71 +444,28 @@ class ModelManager:
         if not MLFLOW_AVAILABLE:
             raise ImportError("MLflow is required for load_onnx_model")
         
+        # Ensure mlflow is available locally to avoid UnboundLocalError
+        import mlflow
+        
         try:
             import onnxruntime as ort
         except ImportError:
             raise ImportError("onnxruntime is required for ONNX model loading")
-        
-        model_uri = f"models:/{name}/{version}"
-        version_obj = self.client.get_model_version(name, str(version))
-        run_id = version_obj.run_id
-        
-        # Download from model source URI (more reliable than run_id for registered models)
-        # The source URI points directly to where the model artifacts are stored
-        local_path = None
-        try:
-            import mlflow
-            logger.info(f"Downloading model artifacts from source URI: {version_obj.source}")
-            local_path = mlflow.artifacts.download_artifacts(artifact_uri=version_obj.source)
-            logger.info(f"Downloaded model artifacts to: {local_path}")
             
-            # The downloaded path might be the model directory or parent directory
-            # Find the model name directory
-            if os.path.basename(local_path) != name:
-                # Search for the model name directory
-                for root, dirs, files in os.walk(local_path):
-                    if os.path.basename(root) == name:
-                        local_path = root
-                        break
-                else:
-                    # If not found, check if name directory exists as subdirectory
-                    potential_path = os.path.join(local_path, name)
-                    if os.path.exists(potential_path):
-                        local_path = potential_path
-        except Exception as e:
-            # Fallback: try downloading from run_id directly
-            logger.warning(f"Failed to download from model source: {e}. Trying run_id...")
-            try:
-                artifacts = self.client.list_artifacts(run_id)
-                logger.info(f"Artifacts for run_id {run_id}: {[a.path for a in artifacts]}")
-                
-                if artifacts:
-                    # Try to download the model directory
-                    local_path = self.client.download_artifacts(run_id, name)
-                    logger.info(f"Downloaded from run_id to: {local_path}")
-                else:
-                    raise ValueError(f"No artifacts found in run {run_id}")
-            except Exception as e2:
-                logger.error(f"Failed to download from run_id: {e2}")
-                raise FileNotFoundError(f"Could not download artifacts for {name} v{version}. Source: {version_obj.source}, Error: {e2}")
-        
-        if local_path is None:
-            raise FileNotFoundError(f"Could not determine local path for {name} v{version}")
+        # Resolve local path via cache
+        local_path = self._resolve_model_path(name, version)
         
         # Look for ONNX model in the expected location
-        # ONNX models are saved at: {model_name}/onnx/{name}_tmp.onnx
         onnx_path = os.path.join(local_path, f'onnx/{name}_tmp.onnx')
         
         # Also try alternative paths if the expected path doesn't exist
         if not os.path.exists(onnx_path):
-            # Try without the name prefix in filename
             alt_paths = [
                 os.path.join(local_path, 'onnx', f'{name}_tmp.onnx'),
                 os.path.join(local_path, 'onnx', 'model.onnx'),
                 os.path.join(local_path, f'{name}_tmp.onnx'),
             ]
             
-            # Search for any .onnx file in the onnx directory
             onnx_dir = os.path.join(local_path, 'onnx')
             if os.path.exists(onnx_dir):
                 for file in os.listdir(onnx_dir):
@@ -464,16 +479,16 @@ class ModelManager:
                     break
         
         if not os.path.exists(onnx_path):
-            # List what's actually in the directory for debugging
-            logger.error(f"ONNX model not found. Local path contents: {os.listdir(local_path) if os.path.exists(local_path) else 'path does not exist'}")
-            if os.path.exists(os.path.join(local_path, 'onnx')):
-                logger.error(f"ONNX directory contents: {os.listdir(os.path.join(local_path, 'onnx'))}")
-            raise FileNotFoundError(
-                f"ONNX model not found at {onnx_path}. "
-                f"Downloaded artifacts to: {local_path}. "
-                f"Model source: {version_obj.source}. "
-                f"Please ensure ONNX model was saved during registration at path: onnx/{name}_tmp.onnx"
-            )
+             # List what's actually in the directory for debugging
+            logger.warning(f"ONNX model not found in {local_path}. Listing contents...")
+            try:
+                logger.warning(f"Root: {os.listdir(local_path)}")
+                if os.path.exists(os.path.join(local_path, 'onnx')):
+                    logger.warning(f"ONNX dir: {os.listdir(os.path.join(local_path, 'onnx'))}")
+            except:
+                pass
+                
+            raise FileNotFoundError(f"ONNX model not found in cached path")
         
         logger.info(f"ONNX model '{name}' version {version} loaded successfully!")
         ort_session = ort.InferenceSession(onnx_path)

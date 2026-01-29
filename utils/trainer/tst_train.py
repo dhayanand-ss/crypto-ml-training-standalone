@@ -22,6 +22,7 @@ import numpy as np
 def main():
     parser = argparse.ArgumentParser(description="Train TST model")
     parser.add_argument("--coin", type=str, default="BTCUSDT", help="Cryptocurrency pair")
+    parser.add_argument("--prices_path", type=str, default=None, help="Path to crypto prices CSV")
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
     parser.add_argument("--use_mlflow", action="store_true", help="Enable MLflow logging")
     parser.add_argument("--use_wandb", action="store_true", help="Enable WandB logging")
@@ -45,7 +46,7 @@ def main():
         print(f"Starting TST training for {coin}...")
         
         # Load data
-        crypto_path = f"data/{coin.lower()}.csv"
+        crypto_path = args.prices_path or f"data/{coin.lower()}.csv"
         
         if not os.path.exists(crypto_path):
             raise FileNotFoundError(f"Crypto data not found at {crypto_path}")

@@ -475,7 +475,7 @@ def build_startup_command() -> str:
     cmd_parts = ["set -e"]
     
     # 0. Self-healing: Ensure basic tools are present (Vast.ai needs ssh/git)
-    cmd_parts.append("apt-get update && apt-get install -y git openssh-client openssh-server rsync || echo 'Apt failed, continuing...'")
+    cmd_parts.append("apt-get update && apt-get install -y git openssh-client openssh-server rsync libgomp1 || echo 'Apt failed, continuing...'")
     
     if export_cmds:
         cmd_parts.append(export_cmds)
@@ -538,8 +538,8 @@ def build_startup_command() -> str:
         f"export AIRFLOW_TASK_ID='{os.getenv('AIRFLOW_TASK_ID', '')}'",
         
         # Run all three training scripts
-        "python -m utils.trainer.lightgbm_train || echo 'LightGBM training failed'",
-        "python -m utils.trainer.tst_train || echo 'TST training failed'",
+        "python -m utils.trainer.lightgbm_train --prices_path data/prices/BTCUSDT.csv --articles_path data/articles/articles.csv || echo 'LightGBM training failed'",
+        "python -m utils.trainer.tst_train --prices_path data/prices/BTCUSDT.csv || echo 'TST training failed'",
         
         # Remove remote download attempt - we upload directly from host
         # "python -m utils.utils.pre_train_dataset || echo 'Data download failed'", 

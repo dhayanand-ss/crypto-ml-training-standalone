@@ -21,6 +21,8 @@ import numpy as np
 def main():
     parser = argparse.ArgumentParser(description="Train LightGBM model")
     parser.add_argument("--coin", type=str, default="BTCUSDT", help="Cryptocurrency pair")
+    parser.add_argument("--prices_path", type=str, default=None, help="Path to crypto prices CSV")
+    parser.add_argument("--articles_path", type=str, default=None, help="Path to news articles CSV")
     parser.add_argument("--use_mlflow", action="store_true", help="Enable MLflow logging")
     parser.add_argument("--use_wandb", action="store_true", help="Enable WandB logging")
     
@@ -42,9 +44,9 @@ def main():
     try:
         print(f"Starting LightGBM training for {coin}...")
         
-        # Load data (Assuming standard data paths)
-        crypto_path = f"data/{coin.lower()}.csv"
-        articles_path = "data/articles.csv"
+        # Load data (Use provided paths or default)
+        crypto_path = args.prices_path or f"data/{coin.lower()}.csv"
+        articles_path = args.articles_path or "data/articles.csv"
         
         if not os.path.exists(crypto_path):
             raise FileNotFoundError(f"Crypto data not found at {crypto_path}")

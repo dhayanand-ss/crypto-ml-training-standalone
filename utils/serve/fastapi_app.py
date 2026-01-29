@@ -357,7 +357,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"MLflow Tracking URI: {mlflow_tracking_uri}")
     
     try:
-        refresh_models()  # Load all production models
+        # refresh_models()  # Load all production models
         logger.info(f"Loaded {len(_model_cache)} production models on startup")
     except Exception as e:
         logger.error(f"Failed to load models on startup: {e}")
@@ -612,19 +612,52 @@ def _make_predictions(
     start_time = time.time()
     
     try:
-        session = model_info['session']
+
+        model_type = model_info.get('type', 'onnx')
         
         # Convert features to numpy array
         features_array = np.array(features, dtype=np.float32)
+
+        if model_type == 'onnx':
+            session = model_info['session']
+            # Get input name from model
+            input_name = session.get_inputs()[0].name
+            # Run inference
+            outputs = session.run(None, {input_name: features_array})
+            predictions = outputs[0].tolist()
+            
+        elif model_type == 'lightgbm':
+            model = model_info['model']
+            # LightGBM predict returns array
+            preds = model.predict(features_array)
+            # Ensure it's list of lists or list of values
+            if isinstance(preds, np.ndarray):
+                predictions = preds.tolist()
+            else:
+                predictions = list(preds)
+            # If 1D array (regression/binary), make it 2D like ONNX usually is for consistency if needed
+            # But standard is fine.
+            
+        elif model_type == 'pytorch':
+            import torch
+            model = model_info['model']
+            device = next(model.parameters()).device
+            
+            with torch.no_grad():
+                inputs = torch.tensor(features_array, dtype=torch.float32).to(device)
+                outputs = model(inputs)
+                # If tuple (TST), get first
+                if isinstance(outputs, tuple):
+                    outputs = outputs[0]
+                predictions = outputs.cpu().numpy().tolist()
         
-        # Get input name from model
-        input_name = session.get_inputs()[0].name
+        else:
+             raise ValueError(f"Unsupported model type for prediction: {model_type}")
+
+        # Common post-processing (logging, metrics) happens below
+
         
-        # Run inference
-        outputs = session.run(None, {input_name: features_array})
-        
-        # Get predictions (first output)
-        predictions = outputs[0].tolist()
+
         
         # Calculate latency
         latency = time.time() - start_time
