@@ -193,11 +193,17 @@ def log_failure(context):
 # =========================
 # DAG 1: Training Pipeline
 # =========================
+import subprocess
+
 def monitor_model_state(model_name, **context):
     time_limit = 5400 # 1.5 hours
     start_time = time.time()
     initial_wait_time = 60  # Wait up to 60 seconds for init_entries to complete
     initial_wait_start = time.time()
+    
+    ti = context['ti']
+    run_id = ti.run_id
+    dag_id = ti.dag_id
     
     print(f"Monitoring model: {model_name}")
     if "_" in model_name:
@@ -206,33 +212,35 @@ def monitor_model_state(model_name, **context):
         model = model_name
         coin = "ALL"
     
-    # First, wait for init_entries to create the status entries
-    # This handles the case where monitor starts before flush_and_init completes
-    print(f"Waiting for status entries to be initialized for {model_name}...")
+    # helper to find instance id
+    def get_instance_id():
+        # check events for this run
+        events = status_db.get_events(dag_id, run_id, limit=100)
+        for event in events:
+            if event.get('event_type') == 'INSTANCE_CREATED' and event.get('metadata'):
+                return event['metadata'].get('instance_id')
+        return None
+
+    instance_id = None
+    
+    # First, wait for init_entries or instance creation
+    print(f"Waiting for status entries/instance creation for {model_name}...")
     while time.time() - initial_wait_start < initial_wait_time:
         status = db.get_status()
         status_item = next((item for item in status if item["model"] == model and item["coin"] == coin), None)
-        if status_item is not None:
-            print(f"Status entry found for {model_name}. Starting monitoring...")
+        
+        instance_id = get_instance_id()
+        
+        if status_item is not None or instance_id is not None:
+            print(f"Status entry or Instance ID found. Starting monitoring...")
             break
         time.sleep(5)
-    else:
-        # After initial wait, check if database is available at all
-        status = db.get_status()
-        if status == [] and time.time() - initial_wait_start >= initial_wait_time:
-            error_msg = (
-                f"ERROR: Status database appears to be unavailable or init_entries() failed. "
-                f"No status entries found after {initial_wait_time} seconds. "
-                f"Check if flush_and_init task completed successfully."
-            )
-            print(error_msg)
-            # Try to set state to FAILED (might not work if DB is unavailable)
-            try:
-                db.set_state(model, coin, "FAILED", error_message=error_msg)
-            except Exception as e:
-                print(f"Failed to set FAILED state: {e}")
-            return "skip_model"
         
+    if not instance_id:
+        instance_id = get_instance_id()
+        if not instance_id:
+            print("Warning: Instance ID not found yet. Will keep checking.")
+
     # Now monitor for state changes
     while True:
         if time.time() - start_time > time_limit:
@@ -241,23 +249,62 @@ def monitor_model_state(model_name, **context):
             db.set_state(model, coin, "FAILED")
             return "skip_model"
         
+        # 1. Check DB first (in case it works)
         status = db.get_status()
-        print(f"Current status from DB: {status}")
         status_item = next((item for item in status if item["model"] == model and item["coin"] == coin), None)
-        print(f"Monitoring {model_name}, found status entry: {status_item}")
-        if status_item is None:
-            print(f"No status entry found for model {model_name}. Checking again in 10 seconds...")
-            time.sleep(10)
-            continue
-        status = status_item["state"]
-        if status == "SUCCESS":
-            return f"post_train_{model_name}"
-        elif status == "FAILED":
-            return "skip_model"
-        else:
-            print(f"Model {model_name} status: {status}. Checking again in 10 seconds...")
-            time.sleep(10)  # Wait for 10 seconds before checking again
-            continue
+        
+        if status_item:
+            state = status_item["state"]
+            if state == "SUCCESS":
+                return f"post_train_{model_name}"
+            elif state == "FAILED":
+                return "skip_model"
+
+        # 2. Fallback to SSH polling if instance_id is known
+        if not instance_id:
+            instance_id = get_instance_id()
+            
+        if instance_id:
+            try:
+                # Check for _SUCCESS file (assuming training script touches it)
+                # We need to know where the script runs. standard is /workspace/{repo_name}
+                # But we can just search for it or assume standard path.
+                # vast_ai_train.py sets CWD to repo_name. 
+                # So relative path in script `Path("_SUCCESS").touch()` creates it in repo root.
+                # We can try `ls _SUCCESS` in the working directory? 
+                # vastai execute usually runs in /root. 
+                # We need full path. 
+                # The repo name logic is in vast_ai_train.py.
+                # Let's try to find it.
+                
+                # Check if file exists using find
+                check_cmd = ["vastai", "execute", str(instance_id), "find /workspace -name _SUCCESS"]
+                result = subprocess.run(check_cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0 and "_SUCCESS" in result.stdout:
+                    print(f"SSH Polling: Found _SUCCESS marker on instance {instance_id}!")
+                    db.set_state(model, coin, "SUCCESS")
+                    return f"post_train_{model_name}"
+                
+                # Check if instance is still running
+                status_cmd = ["vastai", "show", "instance", str(instance_id), "--raw"]
+                status_res = subprocess.run(status_cmd, capture_output=True, text=True)
+                if status_res.returncode == 0:
+                   import json
+                   try:
+                       idx = json.loads(status_res.stdout)
+                       if idx.get("actual_status") != "running":
+                           print(f"Instance {instance_id} is no longer running and no _SUCCESS found.")
+                           db.set_state(model, coin, "FAILED")
+                           return "skip_model"
+                   except:
+                       pass
+
+            except Exception as e:
+                print(f"SSH Polling error: {e}")
+
+        print(f"Monitoring {model_name}... DB State: {status_item.get('state') if status_item else 'None'}. Instance: {instance_id}. Waiting 30s...")
+        time.sleep(30)
 
 def monitor_all_state_to_kill(**context):
     time_limit = 120*60 # 2 hours

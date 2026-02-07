@@ -104,6 +104,13 @@ def main():
         if db:
             db.set_state(model_name, coin, "SUCCESS")
             print(f"Set status for {model_name}_{coin} to SUCCESS")
+
+        # Create success marker file for SSH polling
+        try:
+            Path("_SUCCESS").touch()
+            print("Created _SUCCESS marker file")
+        except Exception as e:
+            print(f"Warning: Failed to create _SUCCESS file: {e}")
             
     except Exception as e:
         error_msg = str(e)
