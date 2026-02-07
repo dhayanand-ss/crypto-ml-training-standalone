@@ -576,6 +576,7 @@ class LightGBMTrainer:
             if self.best_iteration_ is not None:
                 print(f"  Best iteration: {self.best_iteration_}")
             if self.best_score_ is not None:
+                print(f"  Best score: {self.best_score_}")
             if self.evals_result_:
                 print(f"  Eval results restored for {len(self.evals_result_)} validation sets")
             
