@@ -106,12 +106,13 @@ def main():
     print("Creating instance...")
     
     repo_url = os.getenv("VASTAI_GITHUB_REPO", "https://github.com/dhayanand-ss/crypto-ml-training-standalone.git")
+    repo_branch = os.getenv("VASTAI_GITHUB_BRANCH", "main")
     
     # Construct onstart command (run in Linux shell)
     onstart_cmd = (
         f"set -e && "
         f"cd /workspace && "
-        f"[ ! -d crypto-ml-training-standalone ] && git clone {repo_url} crypto-ml-training-standalone || true && "
+        f"[ ! -d crypto-ml-training-standalone ] && git clone -b {repo_branch} {repo_url} crypto-ml-training-standalone || true && "
         f"cd crypto-ml-training-standalone && "
         f"pip install -q -r requirements.txt && "
         f"python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 --batch_size 4 "
