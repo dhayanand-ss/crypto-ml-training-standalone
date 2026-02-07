@@ -505,10 +505,11 @@ def build_startup_command() -> str:
     # Priority 1: Clone from GitHub if repository URL is provided
     if github_repo:
         repo_name = github_repo.split("/")[-1].replace(".git", "")
+        repo_branch = os.getenv("VASTAI_GITHUB_BRANCH", "main")
         # Use single string for the clone + cd logic to avoid '&&' syntax errors
         # FORCE FRESH CLONE: Delete existing directory to ensure no stale code
         cmd_parts.append(f"rm -rf {repo_name} || true")
-        cmd_parts.append(f"git clone {github_repo} {repo_name}")
+        cmd_parts.append(f"git clone -b {repo_branch} {github_repo} {repo_name}")
         cmd_parts.append(f"cd {repo_name}")
         cmd_parts.append("ls -R utils/trainer || echo 'Warning: Could not list utils/trainer'") # Debugging
         cmd_parts.extend([
@@ -549,10 +550,11 @@ def build_startup_command() -> str:
         f"wget -O data/prices/BTCUSDT.csv https://raw.githubusercontent.com/dhayanand-ss/crypto-ml-training-standalone-clean/main/data/prices/BTCUSDT_sample.csv || echo 'Warning: Failed to download price data from GitHub'",
         f"wget -O data/articles/articles.csv https://raw.githubusercontent.com/dhayanand-ss/crypto-ml-training-standalone-clean/main/data/articles/articles_sample.csv || echo 'Warning: Failed to download news data from GitHub'",
         
-        # Run only LightGBM and TST training scripts (TRL disabled as per user request)
+        # Run LightGBM, TST, and TRL training scripts
         # Using the downloaded sample data (saved as BTCUSDT.csv locally on instance)
         "python -m utils.trainer.lightgbm_train --prices_path data/prices/BTCUSDT.csv --articles_path data/articles/articles.csv || echo 'LightGBM training failed'",
-        "python -m utils.trainer.tst_train --prices_path data/prices/BTCUSDT.csv || echo 'TST training failed'"
+        "python -m utils.trainer.tst_train --prices_path data/prices/BTCUSDT.csv || echo 'TST training failed'",
+        "python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 || echo 'TRL training failed'"
     ])
     
     # Add Google Cloud credentials setup if file exists

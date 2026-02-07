@@ -80,6 +80,24 @@ class VastAIClient:
             (f"{VAST_AI_API_BASE}/offers/{offer_id}/", "PUT"),
         ]
         
+        # Try to find SSH key
+        ssh_key = None
+        ssh_paths = [
+            os.path.expanduser("~/.ssh/id_ed25519.pub"),
+            os.path.expanduser("~/.ssh/id_rsa.pub"),
+            os.path.expanduser("~/.ssh/lightning_rsa.pub")
+        ]
+        
+        for path in ssh_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        ssh_key = f.read().strip()
+                        logger.info(f"Using SSH key from {path}")
+                        break
+                except Exception as e:
+                    logger.warning(f"Failed to read SSH key from {path}: {e}")
+        
         data = {
             "client_id": "me",
             "image": image,
@@ -87,6 +105,9 @@ class VastAIClient:
             "disk": disk,
             "ssh": True
         }
+        
+        if ssh_key:
+            data["ssh_public_key"] = ssh_key
         
         for url, method in endpoints:
             try:
@@ -143,6 +164,23 @@ class VastAIClient:
         logger.error(f"Timeout waiting for instance {instance_id}")
         return False
 
+    def add_ssh_key(self, ssh_key: str) -> bool:
+        """Add SSH key to Vast AI account"""
+        url = f"{VAST_AI_API_BASE}/ssh/"
+        data = {"ssh_key": ssh_key}
+        
+        try:
+            response = requests.post(url, headers=self.headers, json=data, timeout=30)
+            if response.status_code == 400 and "already exists" in response.text:
+                logger.info("SSH key already exists on account")
+                return True
+            response.raise_for_status()
+            logger.info("Successfully added SSH key to account")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to add SSH key: {e}")
+            return False
+
 
 def run_trl_training_vast_ai_api(
     api_key: str,
@@ -171,6 +209,24 @@ def run_trl_training_vast_ai_api(
     
     # Initialize client
     client = VastAIClient(api_key)
+    
+    # Ensure SSH key is added
+    ssh_paths = [
+        os.path.expanduser("~/.ssh/id_ed25519.pub"),
+        os.path.expanduser("~/.ssh/id_rsa.pub"),
+        os.path.expanduser("~/.ssh/lightning_rsa.pub")
+    ]
+    
+    for path in ssh_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    ssh_key = f.read().strip()
+                    logger.info(f"Adding SSH key from {path} to account...")
+                    client.add_ssh_key(ssh_key)
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to read/add SSH key from {path}: {e}")
     
     # Build startup command
     if prices_path is None:

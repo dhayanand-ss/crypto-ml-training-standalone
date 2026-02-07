@@ -119,14 +119,12 @@ def main():
         f"--lora_rank 4 --window_hours 12 --threshold 0.005 --clip_eps 0.2 --kl_coef 0.1 --lr 2e-5"
     )
     
-    result = run_vastai_command([
-        "create", "instance", offer_id,
-        "--image", "pytorch/pytorch:latest",
-        "--disk", "30",
-        "--ssh",
-        "--on-demand",
-        "--onstart", onstart_cmd
-    ])
+    
+    # Debug: Print arguments before calling
+    debug_args = ["create", "instance", offer_id, "--image", "pytorch/pytorch:latest", "--disk", "30", "--ssh", "--on-demand", "--onstart", onstart_cmd]
+    print(f"DEBUG: calling run_vastai_command with args: {debug_args}")
+
+    result = run_vastai_command(debug_args)
     
     if result:
         print("Instance creation output:")

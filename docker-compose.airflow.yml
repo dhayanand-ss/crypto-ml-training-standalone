@@ -8,7 +8,7 @@ services:
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: [ "CMD", "pg_isready", "-U", "airflow" ]
       interval: 10s
       retries: 5
       timeout: 5s
@@ -43,6 +43,7 @@ services:
       VASTAI_API_KEY: ${VASTAI_API_KEY}
       VASTAI_DOCKER_IMAGE: ${VASTAI_DOCKER_IMAGE:-python:3.10-slim}
       VASTAI_GITHUB_REPO: ${VASTAI_GITHUB_REPO:-}
+      VASTAI_GITHUB_BRANCH: ${VASTAI_GITHUB_BRANCH:-main}
       # GCP Firestore Configuration
       GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH:-/opt/airflow/gcp-credentials.json}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/opt/airflow/gcp-credentials.json}
@@ -87,6 +88,7 @@ services:
       VASTAI_API_KEY: ${VASTAI_API_KEY}
       VASTAI_DOCKER_IMAGE: ${VASTAI_DOCKER_IMAGE:-python:3.10-slim}
       VASTAI_GITHUB_REPO: ${VASTAI_GITHUB_REPO:-}
+      VASTAI_GITHUB_BRANCH: ${VASTAI_GITHUB_BRANCH:-main}
       # GCP Firestore Configuration
       GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH:-/opt/airflow/gcp-credentials.json}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/opt/airflow/gcp-credentials.json}
@@ -182,8 +184,5 @@ services:
 volumes:
   postgres-db-volume:
   custom-persistent-shared:
-
-
-
 
 
