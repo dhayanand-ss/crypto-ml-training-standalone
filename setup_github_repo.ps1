@@ -7,7 +7,7 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 
 $GITHUB_USERNAME = "dhayanand-ss"
-$REPO_NAME = "crypto-ml-training-standalone-clean"
+$REPO_NAME = "crypto-ml-training-standalone"
 $REPO_URL = "https://github.com/$GITHUB_USERNAME/$REPO_NAME.git"
 
 Write-Host "Configuration:" -ForegroundColor Yellow
@@ -21,8 +21,7 @@ Write-Host "1. Checking Git installation..." -ForegroundColor Yellow
 try {
     $gitVersion = git --version 2>&1
     Write-Host "   [OK] Git is installed: $gitVersion" -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Host "   [ERROR] Git is not installed!" -ForegroundColor Red
     Write-Host "   Please install Git from: https://git-scm.com/downloads" -ForegroundColor Yellow
     exit 1
@@ -33,8 +32,7 @@ Write-Host "`n2. Checking Git repository status..." -ForegroundColor Yellow
 if (Test-Path .git) {
     Write-Host "   [OK] Already a Git repository" -ForegroundColor Green
     $isGitRepo = $true
-}
-else {
+} else {
     Write-Host "   [INFO] Not a Git repository yet. Will initialize..." -ForegroundColor Yellow
     $isGitRepo = $false
 }
@@ -45,8 +43,7 @@ try {
     $ghVersion = gh --version 2>&1 | Select-Object -First 1
     Write-Host "   [OK] GitHub CLI is installed" -ForegroundColor Green
     $hasGhCli = $true
-}
-catch {
+} catch {
     Write-Host "   [INFO] GitHub CLI not installed (optional)" -ForegroundColor Gray
     Write-Host "   You can install it from: https://cli.github.com/" -ForegroundColor Gray
     $hasGhCli = $false
@@ -144,8 +141,7 @@ custom_persistent_shared/
 "@
     Set-Content -Path .gitignore -Value $gitignoreContent
     Write-Host "   [OK] Created .gitignore file" -ForegroundColor Green
-}
-else {
+} else {
     Write-Host "   [OK] .gitignore already exists" -ForegroundColor Green
 }
 
@@ -154,8 +150,7 @@ Write-Host "`n6. Adding files to Git..." -ForegroundColor Yellow
 git add .
 if ($LASTEXITCODE -ne 0) {
     Write-Host "   [WARNING] Some files may have been skipped (check .gitignore)" -ForegroundColor Yellow
-}
-else {
+} else {
     Write-Host "   [OK] Files added to Git" -ForegroundColor Green
 }
 
@@ -169,8 +164,7 @@ if ($gitStatus) {
         exit 1
     }
     Write-Host "   [OK] Changes committed" -ForegroundColor Green
-}
-else {
+} else {
     Write-Host "`n7. No changes to commit" -ForegroundColor Yellow
 }
 
@@ -197,18 +191,15 @@ if ($hasGhCli) {
         if ($LASTEXITCODE -eq 0) {
             Write-Host "   [OK] Repository created and code pushed!" -ForegroundColor Green
             $repoCreated = $true
-        }
-        else {
+        } else {
             Write-Host "   [ERROR] Failed to create repository with GitHub CLI" -ForegroundColor Red
             Write-Host "   Please create it manually and run the next steps" -ForegroundColor Yellow
             $repoCreated = $false
         }
-    }
-    else {
+    } else {
         $repoCreated = $false
     }
-}
-else {
+} else {
     $repoCreated = $false
 }
 
@@ -230,8 +221,7 @@ if ($LASTEXITCODE -eq 0) {
         git remote set-url origin $REPO_URL
         Write-Host "   [OK] Remote updated" -ForegroundColor Green
     }
-}
-else {
+} else {
     git remote add origin $REPO_URL
     Write-Host "   [OK] Remote 'origin' added" -ForegroundColor Green
 }
@@ -243,8 +233,7 @@ git push -u origin main
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "   [OK] Code pushed successfully!" -ForegroundColor Green
-}
-else {
+} else {
     Write-Host "   [ERROR] Failed to push code!" -ForegroundColor Red
     Write-Host "   You may need to:" -ForegroundColor Yellow
     Write-Host "     1. Check your GitHub credentials" -ForegroundColor White
@@ -263,19 +252,16 @@ if (Test-Path .env) {
         $newContent = $envContent | ForEach-Object {
             if ($_ -match "^VASTAI_GITHUB_REPO=") {
                 "VASTAI_GITHUB_REPO=$REPO_URL"
-            }
-            else {
+            } else {
                 $_
             }
         }
         Set-Content -Path .env -Value $newContent
-    }
-    else {
+    } else {
         Add-Content -Path .env -Value "`n# Vast AI GitHub Repository`nVASTAI_GITHUB_REPO=$REPO_URL"
     }
     Write-Host "   [OK] Updated .env file with VASTAI_GITHUB_REPO" -ForegroundColor Green
-}
-else {
+} else {
     "VASTAI_GITHUB_REPO=$REPO_URL" | Out-File -FilePath .env -Encoding utf8
     Write-Host "   [OK] Created .env file with VASTAI_GITHUB_REPO" -ForegroundColor Green
 }

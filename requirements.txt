@@ -9,16 +9,18 @@ joblib>=1.1.0
 requests>=2.28.0
 
 # Deep Learning
-torch>=2.6.0
-transformers>=4.40.0
-peft>=0.10.0
-trl>=0.8.0  # For TRL GRPO training
+torch==2.1.0
+transformers==4.38.2
+peft==0.9.0
+accelerate==0.27.2
+wandb==0.16.3
 
 # Gradient Boosting
 lightgbm>=3.3.0
 
-pandas-ta
-ta>=0.10.0
+# Technical Analysis (pandas-ta is compatible with Python 3.12+, ta library has issues)
+# Note: pandas-ta is optional - install separately if needed: pip install pandas-ta
+# pandas-ta>=0.3.14b0
 
 # Optional: Hyperparameter optimization
 optuna>=3.0.0
@@ -59,3 +61,7 @@ watchdog>=3.0.0  # File system monitoring for job handler
 
 # Database
 psycopg2-binary>=2.9.0  # PostgreSQL adapter
+
+
+
+

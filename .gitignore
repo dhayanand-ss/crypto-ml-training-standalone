@@ -1,63 +1,79 @@
+# Google Cloud service account credentials - NEVER commit these!
+*service-account*.json
+*-*.json
+vertex-ai-key.json
+**/credentials.json
+dhaya123-*.json
+*-credentials.json
+*-key.json
+# GCP credentials (specific patterns)
+*335710*.json
+*039eabaad669*.json
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environments
-venv/
 env/
+venv/
 ENV/
-.env
 .venv
+*.egg-info/
+dist/
+build/
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# Project specific
-data/
-!data/prices/BTCUSDT.csv
-!data/articles/articles.csv
-models/*.pth
-models/*.bin
-models/*.safetensors
-models/finbert/
-mlartifacts/
-mlruns/
-wandb/
-*.tar
-*.gz
-*.zip
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
 logs/
-tmp/
-gcp-credentials.json
-.DS_Store
-env_vars.txt
-container_env.txt
 
-# Secrets and Credentials
-dhaya123-*.json
-*-credentials.json
-*-key.json
-secrets.json
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (optional - uncomment if you don't want to track models)
+# models/*.pkl
+# models/*.pth
+
+# Data files (optional - uncomment if data files are large)
+# data/*.csv
+# data/*.json
+
+# Airflow
+airflow.db
+airflow.cfg
+*.pid
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Backups
+*.tar
+all_docker_images_backup.tar

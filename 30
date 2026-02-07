@@ -1,0 +1,2 @@
+Error:  Unconsumed text. Did you forget to quote your query? "gpu_total_ram disk_space verified=True datacenter=True'" != "'gpu_total_ram disk_space verified=True datacenter=True'"
+1
