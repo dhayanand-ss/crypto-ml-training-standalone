@@ -296,6 +296,7 @@ class TimeSeriesTransformerTrainer:
             # Update progress bar if using tqdm
             if hasattr(loader, 'set_postfix'):
                 loader.set_postfix({'loss': f'{loss.item():.4f}'})
+                loader.update(1)
         
         return total_loss / len(train_loader)
     
