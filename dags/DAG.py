@@ -195,8 +195,8 @@ def log_failure(context):
 # =========================
 import subprocess
 
-def monitor_model_state(model_name, **context):
-    time_limit = 5400 # 1.5 hours
+def wait_and_download_model(model_name, **context):
+    time_limit = 7200 # 2 hours
     start_time = time.time()
     initial_wait_time = 60  # Wait up to 60 seconds for init_entries to complete
     initial_wait_start = time.time()
@@ -205,7 +205,7 @@ def monitor_model_state(model_name, **context):
     run_id = ti.run_id
     dag_id = ti.dag_id
     
-    print(f"Monitoring model: {model_name}")
+    print(f"Monitoring and Downloading model: {model_name}")
     if "_" in model_name:
         coin, model = tuple(model_name.split("_"))
     else:
@@ -250,15 +250,15 @@ def monitor_model_state(model_name, **context):
             return "skip_model"
         
         # 1. Check DB first (in case it works)
-        status = db.get_status()
-        status_item = next((item for item in status if item["model"] == model and item["coin"] == coin), None)
+        # status = db.get_status()
+        # status_item = next((item for item in status if item["model"] == model and item["coin"] == coin), None)
         
-        if status_item:
-            state = status_item["state"]
-            if state == "SUCCESS":
-                return f"post_train_{model_name}"
-            elif state == "FAILED":
-                return "skip_model"
+        # if status_item:
+        #     state = status_item["state"]
+        #     if state == "SUCCESS":
+        #         # ALREADY SUCCESSFUL via DB? Still verify download?
+        #         # Ideally we want to ensure download. 
+        #         pass 
 
         # 2. Fallback to SSH polling if instance_id is known
         if not instance_id:
@@ -267,24 +267,40 @@ def monitor_model_state(model_name, **context):
         if instance_id:
             try:
                 # Check for _SUCCESS file (assuming training script touches it)
-                # We need to know where the script runs. standard is /workspace/{repo_name}
-                # But we can just search for it or assume standard path.
-                # vast_ai_train.py sets CWD to repo_name. 
-                # So relative path in script `Path("_SUCCESS").touch()` creates it in repo root.
-                # We can try `ls _SUCCESS` in the working directory? 
-                # vastai execute usually runs in /root. 
-                # We need full path. 
-                # The repo name logic is in vast_ai_train.py.
-                # Let's try to find it.
-                
-                # Check if file exists using find
                 check_cmd = ["vastai", "execute", str(instance_id), "find /workspace -name _SUCCESS"]
                 result = subprocess.run(check_cmd, capture_output=True, text=True)
                 
                 if result.returncode == 0 and "_SUCCESS" in result.stdout:
-                    print(f"SSH Polling: Found _SUCCESS marker on instance {instance_id}!")
-                    db.set_state(model, coin, "SUCCESS")
-                    return f"post_train_{model_name}"
+                    print(f"SSH Polling: Found _SUCCESS marker on instance {instance_id}! Proceeding to download...")
+                    
+                    # TRIGGER DOWNLOAD LOGIC HERE
+                    try:
+                        if model == "trl":
+                            # Use post_train_trl logic
+                            # We can call the module as a subprocess or import main?
+                            # Subprocess is safer to avoid pollution
+                            download_cmd = f"PYTHONPATH=..:$PYTHONPATH python -m utils.utils.post_train_trl --instance_id {instance_id}"
+                        else:
+                            # Use post_train_reconcile logic
+                            download_cmd = f"PYTHONPATH=..:$PYTHONPATH python -m utils.utils.post_train_reconcile --crypto {coin} --model {model} --instance_id {instance_id}"
+                        
+                        print(f"Executing Download Command: {download_cmd}")
+                        dl_result = subprocess.run(download_cmd, shell=True, capture_output=True, text=True)
+                        
+                        if dl_result.returncode == 0:
+                             print(f"Download Successful! Output:\n{dl_result.stdout}")
+                             db.set_state(model, coin, "SUCCESS")
+                             return f"post_train_{model_name}" # Still return this to satisfy branching? Or just skip post_train task?
+                             # Since we did download here, maybe we skip post_train task?
+                             # But let's keep it consistent. If we return post_train_..., that task runs.
+                             # If that task runs the SAME script, it's fine, it will just overwrite.
+                        else:
+                             print(f"Download Failed! Error:\n{dl_result.stderr}")
+                             # Don't fail yet, maybe retry? 
+                             # For now, treat as failure of this attempt
+                    except Exception as e:
+                        print(f"Error executing download: {e}")
+
                 
                 # Check if instance is still running
                 status_cmd = ["vastai", "show", "instance", str(instance_id), "--raw"]
@@ -303,8 +319,8 @@ def monitor_model_state(model_name, **context):
             except Exception as e:
                 print(f"SSH Polling error: {e}")
 
-        print(f"Monitoring {model_name}... DB State: {status_item.get('state') if status_item else 'None'}. Instance: {instance_id}. Waiting 30s...")
-        time.sleep(30)
+        print(f"Monitoring {model_name}... Instance: {instance_id}. Waiting 60s...")
+        time.sleep(60)
 
 def monitor_all_state_to_kill(**context):
     time_limit = 120*60 # 2 hours
@@ -315,23 +331,19 @@ def monitor_all_state_to_kill(**context):
         if time.time() - start_time > time_limit:
             ### If time limit exceeded, return skip_model
             print(f"Time limit exceeded for monitoring all models. Proceeding to kill instances.")
-            kill_all_vastai_instances()
-            return "kill_vast_ai_instances"
+            # kill_all_vastai_instances() # Calling this directly might be abrupt
+            return "final_kill_kill_vast_ai_instances" # Route to the kill task
         
-            #         status -> [
-            #     {"model": r[0], "coin": r[1], "state": r[2], "error_message": r[3]}
-            #     for r in rows
-            # ]
         status = db.get_status()
-        print(f"Current status from DB: {status}")
+        # print(f"Current status from DB: {status}") # reduces log spam
         all_done = all(item["state"] in ["SUCCESS", "FAILED"] for item in status)
         if all_done:
             print("All models have reached SUCCESS or FAILED state. Proceeding to kill instances.")
-            kill_all_vastai_instances()
-            return "kill_vast_ai_instances"
+            # kill_all_vastai_instances()
+            return "final_kill_kill_vast_ai_instances"
         else:
-            print(f"Not all models are done yet. Checking again in 10 seconds...")
-            time.sleep(10)  # Wait for 10 seconds before checking again
+            # print(f"Not all models are done yet. Checking again in 10 seconds...")
+            time.sleep(30)  # Wait for 30 seconds before checking again
             continue
 
 def cleanup_on_timeout(context):
@@ -412,7 +424,7 @@ def create_dag1():
         for model in models:
             monitor_tasks[model] = BranchPythonOperator(
                 task_id=f"monitor_{model}",
-                python_callable=monitor_model_state,
+                python_callable=wait_and_download_model,
                 op_kwargs={"model_name": model},
                 retries=0,          # how many times to retry
                 retry_delay=timedelta(minutes=1),  # wait between retries
