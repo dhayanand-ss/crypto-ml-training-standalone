@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def main():
     parser = argparse.ArgumentParser(description="Retrieve trained LGBM or TST models from Vast.ai")
     parser.add_argument("--crypto", type=str, required=True, help="Crypto pair (e.g., BTCUSDT)")
-    parser.add_argument("--model", type=str, required=True, choices=["lightgbm", "tst"], help="Model type")
+    parser.add_argument("--instance_id", type=str, help="Vast.ai instance ID (manual override)")
     args = parser.parse_args()
     
     logger.info(f"Starting post-training model retrieval for {args.crypto} {args.model}...")
@@ -36,28 +36,31 @@ def main():
     run_id = os.getenv("AIRFLOW_CTX_DAG_RUN_ID")
     dag_id = os.getenv("AIRFLOW_CTX_DAG_ID")
     
-    if not run_id or not dag_id:
+    if not run_id and not args.instance_id:
         run_id = os.getenv("AIRFLOW_RUN_ID")
         dag_id = os.getenv("AIRFLOW_DAG_ID")
         
-    if not run_id:
-        logger.error("AIRFLOW_CTX_DAG_RUN_ID not set")
+    if not run_id and not args.instance_id:
+        logger.error("Neither AIRFLOW_CTX_DAG_RUN_ID nor --instance_id provided")
         sys.exit(1)
         
-    logger.info(f"Looking up status for DAG: {dag_id}, Run: {run_id}")
+    if run_id:
+        logger.info(f"Looking up status for DAG: {dag_id}, Run: {run_id}")
     
     # Get instance ID from DB
     try:
-        status_list = status_db.get_status(dag_id, run_id)
+        instance_id = args.instance_id
         
-        # Look for the specific model status
-        model_name = f"{args.crypto}_{args.model}"
-        model_status = next((item for item in status_list if item.get('model_name') == model_name), None)
-        
-        instance_id = None
-        if model_status:
-            metadata = model_status.get('metadata', {})
-            instance_id = metadata.get('instance_id')
+        if not instance_id:
+            status_list = status_db.get_status(dag_id, run_id)
+            
+            # Look for the specific model status
+            model_name = f"{args.crypto}_{args.model}"
+            model_status = next((item for item in status_list if item.get('model_name') == model_name), None)
+            
+            if model_status:
+                metadata = model_status.get('metadata', {})
+                instance_id = metadata.get('instance_id')
             
         if not instance_id:
             logger.info("Checking for 'vast_ai_train' task metadata as fallback...")

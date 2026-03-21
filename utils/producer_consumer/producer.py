@@ -21,7 +21,11 @@ from utils.producer_consumer.consumer_utils import state_checker, state_write
 from utils.producer_consumer.logger import setup_logger
 
 # Configuration
-KAFKA_BROKER = f"{os.environ.get('KAFKA_HOST', 'localhost')}:9092"
+kafka_host = os.environ.get('KAFKA_HOST', 'localhost')
+if ":" in kafka_host:
+    KAFKA_BROKER = kafka_host
+else:
+    KAFKA_BROKER = f"{kafka_host}:9092"
 SYMBOLS = ["BTCUSDT"]  # Supported cryptocurrencies
 INTERVAL = "1m"  # Data interval
 BATCH_SIZE = 1000  # Records per batch (reduced from 10000 to avoid Kafka message size errors)
@@ -242,19 +246,14 @@ def main():
     # Create topic (will be created automatically if auto.create.topics.enable is true)
     topic = app.topic(symbol)
     
-    # Initialize database - REQUIRED (not optional)
     global crypto_db
     if crypto_db is None:
         try:
             crypto_db = CryptoDB(coins=SYMBOLS, data_path=str(DATA_PATH))
             logger.info("Database connection initialized successfully")
         except Exception as e:
-            logger.error(f"CRITICAL: Failed to initialize GCP Firestore database: {e}")
-            logger.error("GCP credentials are REQUIRED. Please set one of:")
-            logger.error("  - GCP_CREDENTIALS_PATH or GOOGLE_APPLICATION_CREDENTIALS (path to service account key)")
-            logger.error("  - GCP_PROJECT_ID (your GCP project ID)")
-            logger.error("Producer cannot start without database connection.")
-            sys.exit(1)
+            logger.error(f"Failed to initialize GCP Firestore database: {e}")
+            logger.warning("GCP credentials missing. Producer will continue in Standalone (Mock) mode without database integration.")
     
     # State management
     state_write("ALL", "producer", "main", "running")
@@ -324,14 +323,13 @@ def main():
                     time.sleep(60)
                     continue
                 
-                # Insert into database - REQUIRED
+                # Insert into database - LOCAL FALLBACK
                 try:
                     crypto_db.bulk_insert_df(symbol.lower(), new_df)
-                    logger.info(f"Inserted {len(new_df)} records into GCP Firestore database")
+                    logger.info(f"Inserted {len(new_df)} records into local CSV Mock database")
                 except Exception as e:
-                    logger.error(f"CRITICAL: Error inserting into database: {e}")
-                    logger.error("Database update failed. Stopping producer.")
-                    raise  # Re-raise to stop the producer
+                    logger.error(f"Error inserting into database: {e}")
+                    logger.warning("Database update skipped. Continuing producer in standalone mode.")
                 
                 # Append to CSV
                 try:

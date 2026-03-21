@@ -548,7 +548,7 @@ class TimeSeriesTransformerTrainer:
         # Model already outputs 3-class probabilities directly
         return self.predict_proba(X_test)
     
-    def evaluate(self, X_test, y_test):
+    def evaluate(self, X_test, y_test, use_mlflow=False, use_wandb=False):
         """Evaluate the model"""
         predictions = self.predict(X_test)
         
@@ -565,7 +565,7 @@ class TimeSeriesTransformerTrainer:
             try:
                 log_classification_metrics(predictions, y_test, name="tst_val", 
                                          class_labels=['0', '1', '2'], 
-                                         use_mlflow=False, use_wandb=False)  # Disable by default
+                                         use_mlflow=use_mlflow, use_wandb=use_wandb)
             except Exception as e:
                 print(f"Warning: Failed to log metrics: {e}")
         

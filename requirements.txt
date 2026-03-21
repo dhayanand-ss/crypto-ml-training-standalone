@@ -44,8 +44,7 @@ google-cloud-storage>=2.10.0
 # Training job orchestration removed - using Vast AI instead
 vastai>=0.1.0  # Vast.ai CLI for GPU instance management
 
-# MLflow (for experiment tracking and model registry)
-mlflow>=2.0.0
+
 
 # FastAPI and ML Inference Service
 fastapi>=0.100.0

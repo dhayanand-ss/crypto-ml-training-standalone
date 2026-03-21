@@ -225,20 +225,11 @@ class LightGBMTrainer:
         else:
             return labels
     
-    def train(self, X, y, test_size=0.2, cv_folds=5, use_mlflow=False, use_wandb=False):
+    def train(self, X, y, test_size=0.2, cv_folds=5, use_wandb=False):
         """Train LightGBM model"""
         print("Training LightGBM model...")
 
-        # Setup MLflow if enabled
-        if use_mlflow:
-            try:
-                import mlflow
-                import mlflow.lightgbm
-                # mlflow.lightgbm.autolog()
-                print("MLflow autologging disabled (using manual logging)")
-            except ImportError:
-                print("Warning: MLflow not installed. logging disabled.")
-                use_mlflow = False
+        # Split data
         
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
@@ -285,7 +276,7 @@ class LightGBMTrainer:
             try:
                 log_classification_metrics(y_pred, y_test, name="lightgbm_val", 
                                          class_labels=['0', '1', '2'], 
-                                         use_mlflow=use_mlflow, use_wandb=use_wandb)
+                                         use_mlflow=False, use_wandb=use_wandb)
             except Exception as e:
                 print(f"Warning: Failed to log metrics: {e}")
         
@@ -589,7 +580,8 @@ def main():
     """Main function to demonstrate LightGBM training"""
     import argparse
     parser = argparse.ArgumentParser(description="Train LightGBM model")
-    parser.add_argument("--use_mlflow", action="store_true", help="Enable MLflow logging")
+    parser = argparse.ArgumentParser(description="Train LightGBM model")
+    parser.add_argument("--use_wandb", action="store_true", help="Enable WandB logging")
     parser.add_argument("--use_wandb", action="store_true", help="Enable WandB logging")
     args = parser.parse_args()
 
@@ -640,61 +632,22 @@ def main():
     # Initialize trainer
     trainer = LightGBMTrainer()
     
-    if args.use_mlflow:
-        import mlflow
-        os.makedirs("mlruns", exist_ok=True)
-        mlflow.set_tracking_uri("file:./mlruns")
-        mlflow.set_experiment("lightgbm_training")
-        
-        with mlflow.start_run(run_name="manual_lightgbm"):
-             # Prepare features
-            X, y, feature_cols = trainer.prepare_features(crypto_df, sentiment_df)
+    # Prepare features
+    X, y, feature_cols = trainer.prepare_features(crypto_df, sentiment_df)
+    
+    # Train model
+    X_test, y_test, y_pred, y_pred_proba, accuracy = trainer.train(
+        X, y, use_wandb=args.use_wandb
+    )
+    
+    # Save model
+    os.makedirs("models", exist_ok=True)
+    trainer.save_model("models/lgb_model.txt")
+    
+    print("\nLightGBM training completed!")
+    print("Model saved to models/lgb_model.txt")
             
-            # Train model
-            X_test, y_test, y_pred, y_pred_proba, accuracy = trainer.train(
-                X, y, use_mlflow=True, use_wandb=args.use_wandb
-            )
-            
-            # Log params
-            mlflow.log_params(trainer.params)
-            mlflow.log_metric("final_accuracy", accuracy)
-            
-            # Save model to disk
-            os.makedirs("models", exist_ok=True)
-            trainer.save_model("models/lgb_model.txt")
-            
-            # Log model to MLflow and register
-            print("Logging model to MLflow...")
-            # Log as artifact (safer than log_model for custom loading)
-            mlflow.log_artifact("models/lgb_model.txt", artifact_path="model")
-            
-            # Register model (requires a run URI)
-            run_id = mlflow.active_run().info.run_id
-            model_uri = f"runs:/{run_id}/model"
-            try:
-                mlflow.register_model(model_uri, "lightgbm_local")
-                print("Model registered as 'lightgbm_local'")
-            except Exception as e:
-                print(f"Warning: Failed to register model: {e}")
-            
-            print("\nLightGBM training completed!")
-            print("Model saved to models/lgb_model.txt")
-            
-    else:
-        # Prepare features
-        X, y, feature_cols = trainer.prepare_features(crypto_df, sentiment_df)
-        
-        # Train model
-        X_test, y_test, y_pred, y_pred_proba, accuracy = trainer.train(
-            X, y, use_mlflow=False, use_wandb=args.use_wandb
-        )
-        
-        # Save model
-        os.makedirs("models", exist_ok=True)
-        trainer.save_model("models/lgb_model.txt")
-        
-        print("\nLightGBM training completed!")
-        print("Model saved to models/lgb_model.txt")
+
 
 if __name__ == "__main__":
     main()

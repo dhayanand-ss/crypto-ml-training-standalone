@@ -152,7 +152,7 @@ services:
       JOBS_DIR: /opt/airflow/custom_persistent_shared/jobs
       DATA_PATH: /opt/airflow/data/prices
       LOG_DIR: /opt/airflow/custom_persistent_shared/logs
-      KAFKA_HOST: ${KAFKA_HOST:-localhost}
+      KAFKA_HOST: ${KAFKA_HOST:-kafka:29092}
       # GCP Firestore Configuration
       GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH:-/opt/airflow/gcp-credentials.json}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/opt/airflow/gcp-credentials.json}
@@ -180,9 +180,18 @@ services:
       airflow-init:
         condition: service_completed_successfully
     restart: always
+    networks:
+      - default
+      - kafka-network
 
 volumes:
   postgres-db-volume:
   custom-persistent-shared:
 
 
+networks:
+  default:
+    name: crypto-ml-training-standalone_default
+  kafka-network:
+    external: true
+    name: k8-setup_kafka-network

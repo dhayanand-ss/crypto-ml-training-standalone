@@ -25,7 +25,7 @@ PREDICTIONS_PATH = os.path.join(DATA_PATH, "predictions")
 # Supported configurations
 SYMBOLS = ["BTCUSDT"]
 MODELS = ["lightgbm", "tst"]
-VERSIONS = ["v1", "v2", "v3"]
+VERSIONS = ["1", "2", "3"]
 
 # Setup logger
 logger = setup_logger("consumer_start")

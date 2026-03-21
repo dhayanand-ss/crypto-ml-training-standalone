@@ -552,6 +552,8 @@ def build_startup_command() -> str:
         
         # Run LightGBM, TST, and TRL training scripts
         # Using the downloaded sample data (saved as BTCUSDT.csv locally on instance)
+        # Wait for GCP credentials if expected (up to 60 seconds)
+        "for i in {1..6}; do [ -f /workspace/gcp-credentials.json ] && break; echo 'Waiting for GCP credentials...'; sleep 10; done",
         "python -m utils.trainer.lightgbm_train --prices_path data/prices/BTCUSDT.csv --articles_path data/articles/articles.csv || echo 'LightGBM training failed'",
         "python -m utils.trainer.tst_train --prices_path data/prices/BTCUSDT.csv || echo 'TST training failed'",
         "python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 || echo 'TRL training failed'"
@@ -559,10 +561,13 @@ def build_startup_command() -> str:
     
     # Add Google Cloud credentials setup if file exists
     gcp_creds_path = os.getenv("GCP_CREDENTIALS_PATH", "/opt/airflow/gcp-credentials.json")
+    gcp_project_id = os.getenv("GCP_PROJECT_ID", "dhaya123-335710")
     if gcp_creds_path:
         # We'll upload this file separately via SCP/VastAI copy
-        # Here we just ensure the env var points to the destination
+        # Here we just ensure the env vars point to the destination
         cmd_parts.insert(1, 'export GOOGLE_APPLICATION_CREDENTIALS="/workspace/gcp-credentials.json"')
+        cmd_parts.insert(1, 'export GCP_CREDENTIALS_PATH="/workspace/gcp-credentials.json"')
+        cmd_parts.insert(1, f'export GCP_PROJECT_ID="{gcp_project_id}"')
     
     startup_cmd = " && ".join(cmd_parts)
     

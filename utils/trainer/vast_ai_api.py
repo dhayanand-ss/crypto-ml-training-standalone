@@ -195,7 +195,6 @@ def run_trl_training_vast_ai_api(
     clip_eps=0.2,
     kl_coef=0.1,
     lr=2e-5,
-    use_mlflow=False,
     use_wandb=False,
     budget=0.25,
     max_wait_time=600
@@ -247,8 +246,6 @@ def run_trl_training_vast_ai_api(
         f"--lr {lr}",
     ]
     
-    if use_mlflow:
-        train_args.append("--use_mlflow")
     if use_wandb:
         train_args.append("--use_wandb")
     
@@ -256,10 +253,6 @@ def run_trl_training_vast_ai_api(
     
     # Build startup script
     env_vars = {
-        "MLFLOW_S3_ENDPOINT_URL": os.getenv("MLFLOW_S3_ENDPOINT_URL", ""),
-        "MLFLOW_URI": os.getenv("MLFLOW_URI", ""),
-        "MLFLOW_TRACKING_USERNAME": os.getenv("MLFLOW_TRACKING_USERNAME", ""),
-        "MLFLOW_TRACKING_PASSWORD": os.getenv("MLFLOW_TRACKING_PASSWORD", ""),
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", ""),
         "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
     }

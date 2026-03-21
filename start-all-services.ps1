@@ -1,12 +1,12 @@
 # PowerShell script to start all services simultaneously
-# This script starts: FastAPI, MLflow, Prometheus, and Grafana
+# This script starts: FastAPI, Prometheus, and Grafana
 #
 # Build Times:
 #   First run: 5-10 minutes (downloads PyTorch ~2GB and all dependencies)
 #   Subsequent runs: ~10-15 seconds (images cached, no build needed)
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "Starting All Services (FastAPI + MLflow + Prometheus + Grafana)" -ForegroundColor Cyan
+Write-Host "Starting All Services (FastAPI + Prometheus + Grafana)" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -158,16 +158,16 @@ while ($elapsed -lt $maxWait -and -not $allReady) {
     $elapsed += $waitInterval
     
     # Check if containers are running
-    $containers = docker ps --filter "name=fastapi-ml" --filter "name=mlflow" --filter "name=prometheus" --filter "name=grafana" --format "{{.Names}}" 2>&1
+    $containers = docker ps --filter "name=fastapi-ml" --filter "name=prometheus" --filter "name=grafana" --format "{{.Names}}" 2>&1
     $runningCount = ($containers -split "`n" | Where-Object { $_ -ne "" }).Count
     
-    if ($runningCount -ge 4) {
-        Write-Host "   [OK] All services are running ($runningCount/4)" -ForegroundColor Green
+    if ($runningCount -ge 3) {
+        Write-Host "   [OK] All services are running ($runningCount/3)" -ForegroundColor Green
         $allReady = $true
     } elseif ($elapsed -lt $maxWait) {
         # Only show progress, don't spam
         if ($elapsed % 6 -eq 0) {  # Show every 6 seconds
-            Write-Host "   Waiting... ($runningCount/4 services running)" -ForegroundColor Gray
+            Write-Host "   Waiting... ($runningCount/3 services running)" -ForegroundColor Gray
         }
     }
 }
@@ -178,7 +178,7 @@ if (-not $allReady) {
 
 # Check service status
 Write-Host "`n6. Checking service status..." -ForegroundColor Yellow
-docker ps --filter "name=fastapi-ml" --filter "name=mlflow" --filter "name=prometheus" --filter "name=grafana" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+docker ps --filter "name=fastapi-ml" --filter "name=prometheus" --filter "name=grafana" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # Display access information
 Write-Host "`n============================================================" -ForegroundColor Green
@@ -190,8 +190,7 @@ Write-Host "  FastAPI:     http://localhost:8000" -ForegroundColor White
 Write-Host "               http://localhost:8000/docs (API Documentation)" -ForegroundColor Gray
 Write-Host "               http://localhost:8000/metrics (Prometheus Metrics)" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  MLflow:      http://localhost:5000" -ForegroundColor White
-Write-Host ""
+Write-Host "
 Write-Host "  Prometheus:  http://localhost:9090" -ForegroundColor White
 Write-Host "               Status → Targets (to verify FastAPI scraping)" -ForegroundColor Gray
 Write-Host ""
