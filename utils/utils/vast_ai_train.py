@@ -547,13 +547,14 @@ def build_startup_command() -> str:
         
         # Ensure data directories exist and download data from GitHub (fallback for copy_data_to_instance)
         "mkdir -p data/prices data/articles",
-        f"wget -O data/prices/BTCUSDT.csv https://raw.githubusercontent.com/dhayanand-ss/crypto-ml-training-standalone-clean/main/data/prices/BTCUSDT_sample.csv || echo 'Warning: Failed to download price data from GitHub'",
-        f"wget -O data/articles/articles.csv https://raw.githubusercontent.com/dhayanand-ss/crypto-ml-training-standalone-clean/main/data/articles/articles_sample.csv || echo 'Warning: Failed to download news data from GitHub'",
+        f"wget -O data/prices/BTCUSDT.csv https://raw.githubusercontent.com/dhayanand-ss/crypto-ml-training-standalone-clean/main/data/prices/BTCUSDT.csv || echo 'Warning: Failed to download price data from GitHub'",
+        f"wget -O data/articles/articles.csv https://raw.githubusercontent.com/dhayanand-ss/crypto-ml-training-standalone-clean/main/data/articles/articles.csv || echo 'Warning: Failed to download news data from GitHub'",
         
         # Run LightGBM, TST, and TRL training scripts
         # Using the downloaded sample data (saved as BTCUSDT.csv locally on instance)
         # Wait for GCP credentials if expected (up to 60 seconds)
         "for i in {1..6}; do [ -f /workspace/gcp-credentials.json ] && break; echo 'Waiting for GCP credentials...'; sleep 10; done",
+        # Run only LightGBM and TST training scripts (TRL disabled as per user request)
         "python -m utils.trainer.lightgbm_train --prices_path data/prices/BTCUSDT.csv --articles_path data/articles/articles.csv || echo 'LightGBM training failed'",
         "python -m utils.trainer.tst_train --prices_path data/prices/BTCUSDT.csv || echo 'TST training failed'",
         "python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 || echo 'TRL training failed'"
