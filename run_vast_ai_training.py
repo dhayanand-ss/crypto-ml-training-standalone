@@ -64,7 +64,7 @@ def main():
         clip_eps=0.2,
         kl_coef=0.1,
         lr=2e-5,
-        use_mlflow=False,
+        lr=2e-5,
         use_wandb=False,
         budget=0.25,
         max_wait_time=600

@@ -24,9 +24,13 @@ from utils.producer_consumer.consumer_utils import state_checker, state_write, g
 from utils.producer_consumer.logger import setup_logger
 
 # Configuration
-KAFKA_BROKER = f"{os.environ.get('KAFKA_HOST', 'localhost')}:9092"
-seq_len = 30  # Sequence length for time series models
-url = os.getenv("FASTAPI_URL", "http://fastapi-ml:8000/predict")
+kafka_host = os.environ.get('KAFKA_HOST', 'localhost')
+if ":" in kafka_host:
+    KAFKA_BROKER = kafka_host
+else:
+    KAFKA_BROKER = f"{kafka_host}:9092"
+seq_len = 60  # Sequence length for time series models (increased to 60 for SMA_50)
+url = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000/predict")
 DATA_PATH = os.getenv("DATA_PATH", "/opt/airflow/custom_persistent_shared/data")
 PREDICTIONS_PATH = os.path.join(DATA_PATH, "predictions")
 PRICES_PATH = os.path.join(DATA_PATH, "prices")
@@ -51,11 +55,6 @@ def get_predictions(features: List[List[float]], model_name: str, version: str, 
     Returns:
         List of predictions
     """
-    # Convert version to 0-indexed if needed (v1 -> 0, v2 -> 1, etc.)
-    if version.startswith("v"):
-        version_num = int(version[1:]) - 1
-    else:
-        version_num = int(version) - 1
     
     # Batch requests (max 5000 per request)
     batch_size = 5000
@@ -64,33 +63,36 @@ def get_predictions(features: List[List[float]], model_name: str, version: str, 
     for i in range(0, len(features), batch_size):
         batch_features = features[i:i + batch_size]
         
-        for attempt in range(max_retries):
+        attempt = 0
+        while attempt < max_retries:
             try:
                 response = requests.post(
                     url,
-                    json=batch_features,
-                    params={
-                        "model_name": model_name,
-                        "version": version_num
-                    },
-                    timeout=300  # 5 minute timeout
+                    json={"features": batch_features},
+                    params={"model_name": model_name, "version": str(version)},
+                    timeout=20
                 )
                 response.raise_for_status()
-                
-                result = response.json()
-                predictions = result.get("predictions", [])
-                all_predictions.extend(predictions)
-                
-                logger.info(f"Got predictions for batch {i//batch_size + 1} ({len(batch_features)} samples)")
+                preds = response.json()["predictions"]
+                all_predictions.extend(preds)
                 break
-                
             except Exception as e:
-                if attempt < max_retries - 1:
-                    logger.warning(f"Prediction request failed (attempt {attempt + 1}/{max_retries}): {e}")
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                attempt += 1
+                if hasattr(e, 'response') and e.response is not None:
+                    try:
+                        error_detail = e.response.json()
+                        logger.error(f"Error calling FastAPI (attempt {attempt}/{max_retries}) [Status {e.response.status_code}]: {error_detail}")
+                    except:
+                        logger.error(f"Error calling FastAPI (attempt {attempt}/{max_retries}) [Status {e.response.status_code}]: {e.response.text}")
                 else:
-                    logger.error(f"Prediction request failed after {max_retries} attempts: {e}")
-                    raise
+                    logger.error(f"Error calling FastAPI (attempt {attempt}/{max_retries}): {e}")
+                
+                if attempt == max_retries:
+                    # Final fallback: return neutral probabilities if batch fails
+                    logger.warning(f"Returning default neutral predictions for batch {i//batch_size + 1}")
+                    all_predictions.extend([[0.0, 1.0, 0.0]] * len(batch_features))
+                else:
+                    time.sleep(1)
     
     return all_predictions
 
@@ -106,67 +108,84 @@ def check_model_availability(model_name: str, version: str) -> bool:
     Returns:
         True if model is available
     """
-    # Convert version to 0-indexed if needed
-    if version.startswith("v"):
-        version_num = int(version[1:]) - 1
-    else:
-        version_num = int(version) - 1
-    
+    check_url = url.replace("/predict", "/is_model_available")
+    logger.info(f"Checking model availability on {check_url} for {model_name} {version}")
     try:
-        check_url = url.replace("/predict", "/is_model_available")
         response = requests.post(
             check_url,
-            json={
-                "model_name": model_name,
-                "version": version_num
-            },
+            json={"model_name": model_name, "version": str(version)},
             timeout=10
         )
         response.raise_for_status()
-        result = response.json()
-        return result.get("available", False)
+        available = response.json().get("available", False)
+        logger.info(f"Model availability result: {available}")
+        return available
     except Exception as e:
-        logger.warning(f"Error checking model availability: {e}")
+        logger.error(f"Error checking model availability on {check_url}: {e} | type: {type(e)}")
+        # Log health check as well
+        try:
+            health_url = url.replace("/predict", "/health")
+            health = requests.get(health_url, timeout=5).json()
+            logger.info(f"FastAPI health: {health}")
+        except:
+            pass
         return False
 
 
-def preprocess_data(df: pd.DataFrame, seq_len: int = 30) -> np.ndarray:
+def preprocess_data(df: pd.DataFrame, seq_len: int = 60) -> np.ndarray:
     """
-    Preprocess data for ML models.
+    Preprocess data for ML models exactly as done during training.
     
     Args:
         df: DataFrame with OHLCV data
         seq_len: Sequence length for time series models
         
     Returns:
-        Feature array
+        Feature array of shape [None, 35] for LightGBM validation
     """
-    # Select required columns
-    required_cols = ["open", "high", "low", "close", "volume"]
-    df = df[required_cols].copy()
-    
-    # Normalize features (simple min-max scaling)
-    for col in df.columns:
-        col_min = df[col].min()
-        col_max = df[col].max()
-        if col_max > col_min:
-            df[col] = (df[col] - col_min) / (col_max - col_min)
-    
-    # Convert to numpy array
-    features = df.values
-    
-    # Reshape for time series models if needed
-    if len(features) >= seq_len:
-        # Create sliding windows
-        windows = []
-        for i in range(len(features) - seq_len + 1):
-            windows.append(features[i:i + seq_len].flatten())
-        return np.array(windows)
-    else:
-        # Pad with zeros if not enough data
-        padded = np.zeros((seq_len, len(required_cols)))
-        padded[-len(features):] = features
-        return padded.flatten().reshape(1, -1)
+    try:
+        from trainer.lightgbm_trainer import LightGBMTrainer
+        import warnings
+        
+        # The trainer expects certain columns to exist, especially sentiment
+        # In a real-time stream without a sentiment producer, we inject neutral defaults
+        df = df.copy()
+        
+        # Ensure we have the base required columns
+        for col in ["open", "high", "low", "close", "volume"]:
+            if col not in df.columns:
+                return np.array([])
+                
+        # The LightGBM trainer requires sentiment data to merge on 'date'
+        if 'open_time' in df.columns:
+            dates = pd.to_datetime(df['open_time']).dt.strftime('%Y-%m-%d').unique()
+        else:
+            dates = ['2023-01-01']
+            
+        sentiment_df = pd.DataFrame({
+            'date': dates,
+            'sentiment_mean': [0.0]*len(dates),
+            'sentiment_std': [0.0]*len(dates),
+            'news_count': [0]*len(dates),
+            'sentiment_confidence': [0.0]*len(dates),
+            'negative_sentiment': [0.0]*len(dates),
+            'neutral_sentiment': [1.0]*len(dates),
+            'positive_sentiment': [0.0]*len(dates)
+        })
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            trainer = LightGBMTrainer()
+            X, y, cols = trainer.prepare_features(df, sentiment_df)
+            
+        if len(X) == 0:
+            return np.array([])
+            
+        # Return only the last feature vector (representing the current timestep)
+        return np.array([X[-1]])
+    except Exception as e:
+        logger.error(f"Error in preprocess_data: {e}")
+        return np.array([])
 
 
 def historical_reconciliation(crypto: str, model: str, version: str):
@@ -203,7 +222,11 @@ def historical_reconciliation(crypto: str, model: str, version: str):
     logger.info(f"Found {len(missing_times)} missing predictions")
     
     # Load price data
+    # Use BTCUSDT.csv if BTC.csv not found (convention mismatch fix)
     price_csv_path = os.path.join(PRICES_PATH, f"{crypto}.csv")
+    if not os.path.exists(price_csv_path):
+        price_csv_path = os.path.join(PRICES_PATH, f"{crypto}USDT.csv")
+    
     if not os.path.exists(price_csv_path):
         logger.warning(f"Price data CSV not found: {price_csv_path}")
         return
@@ -342,7 +365,9 @@ def build_pipeline(crypto: str, model: str, version: str):
         return
     
     # Subscribe to topic
-    topic = app.topic(crypto)
+    topic_name = crypto if crypto.endswith("USDT") else f"{crypto}USDT"
+    logger.info(f"Subscribing to topic: {topic_name}")
+    topic = app.topic(topic_name)
     
     # State management
     state_write(crypto, model, version, "wait")
@@ -351,7 +376,8 @@ def build_pipeline(crypto: str, model: str, version: str):
     logger.info("Waiting for start command...")
     while True:
         state = state_checker(crypto, model, version, timeout=5)
-        if state == "start":
+        if state in ["start", "running"]:
+            logger.info(f"Transitioning from {state} to running")
             break
         if state == "delete":
             logger.info("Received delete command before start")
@@ -360,7 +386,9 @@ def build_pipeline(crypto: str, model: str, version: str):
         time.sleep(5)
     
     # Set state to running
+    logger.info("Setting state to running...")
     state_write(crypto, model, version, "running")
+    logger.info("State set to running. Checking model availability...")
     
     # Check model availability
     if not check_model_availability(model, version):
@@ -369,10 +397,13 @@ def build_pipeline(crypto: str, model: str, version: str):
         return
     
     # Historical reconciliation
+    logger.info("Starting historical reconciliation phase...")
     try:
         historical_reconciliation(crypto, model, version)
     except Exception as e:
         logger.error(f"Error during historical reconciliation: {e}")
+    
+    logger.info("Historical reconciliation complete. Initializing pipeline...")
     
     # Maintain rolling window
     rolling_window = []
@@ -458,7 +489,11 @@ def build_pipeline(crypto: str, model: str, version: str):
             
             # Get prediction for last row
             last_time = window_df.iloc[-1]["open_time"]
-            feature_vector = features[-1].tolist() if len(features.shape) > 1 else features.tolist()
+            # Ensure feature_vector is a flat python list of floats
+            if len(features.shape) > 1:
+                feature_vector = [float(x) for x in features[-1].flatten()]
+            else:
+                feature_vector = [float(x) for x in features.flatten()]
             
             # Get prediction
             try:

@@ -11,19 +11,18 @@
     },
     "v2": {
       "path": "models\\lightgbm\\v2\\lgb_model.txt",
-      "created_at": "2024-01-01T00:00:00",
-      "created_from_v1": true,
-      "metadata": {
-        "source": "models\\lgb_model.txt",
-        "migrated_at": "2024-01-01T00:00:00"
-      }
-    },
-    "v3": {
-      "path": "models\\lightgbm\\v3\\lgb_model.txt",
-      "created_at": "2025-11-13T07:23:42.592451",
+      "created_at": "2026-02-19T11:17:09.984619",
       "metadata": {
         "accuracy": 0.4579988016776513,
         "trained_at": "2025-11-13T07:23:42.582332"
+      }
+    },
+    "v3": {
+      "path": "models\\lightgbm\\v3\\lgb_model_temp.txt",
+      "created_at": "2026-02-19T11:17:09.986882",
+      "metadata": {
+        "accuracy": 0.9892070484581498,
+        "trained_at": "2026-02-19T11:17:09.980169"
       }
     }
   },
@@ -68,7 +67,7 @@
     "v3": null
   },
   "metadata": {
-    "last_updated": "2025-11-13T08:17:10.152069",
+    "last_updated": "2026-02-19T11:17:09.986893",
     "version_history": [
       {
         "model_type": "lightgbm",
@@ -83,6 +82,18 @@
         "timestamp": "2025-11-13T07:35:32.445304",
         "new_version": "3",
         "previous_v3_promoted_to_v2": false
+      },
+      {
+        "model_type": "lightgbm",
+        "action": "update",
+        "version": "2",
+        "timestamp": "2026-02-19T11:17:09.984629"
+      },
+      {
+        "model_type": "lightgbm",
+        "action": "update",
+        "version": "3",
+        "timestamp": "2026-02-19T11:17:09.986890"
       }
     ]
   }

@@ -19,7 +19,7 @@ from utils.producer_consumer.logger import setup_logger
 # Configuration
 SYMBOLS = ["BTCUSDT"]
 MODELS = ["lightgbm", "tst"]
-VERSIONS = ["v1", "v2", "v3"]
+VERSIONS = ["1", "2", "3"]
 
 # Timeout configuration
 INDIVIDUAL_PROCESS_TIMEOUT = 60  # Reduced from 300 to 60 seconds per process

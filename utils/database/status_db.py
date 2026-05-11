@@ -226,26 +226,107 @@ import os
 # Initialize status_db - handle missing GCP credentials gracefully
 db_url = os.getenv("STATUS_DB")
 
-class NoOpStatusDB:
-    """No-op implementation when GCP Firestore is not available."""
-    def log_event(self, *args, **kwargs):
-        pass
-    def get_status(self, *args, **kwargs):
-        return []
-    def get_events(self, *args, **kwargs):
-        return []
-    def cleanup_old_events(self, *args, **kwargs):
+
+import json
+from pathlib import Path
+
+class FileBasedStatusDB:
+    """File-based implementation for tracking events when Firestore is unavailable."""
+    def __init__(self, storage_dir=None):
+        if storage_dir:
+            self.storage_dir = Path(storage_dir)
+        else:
+            self.storage_dir = Path(os.getenv(
+                "VASTAI_BLACKLIST_DIR", 
+                "/opt/airflow/custom_persistent_shared"
+            ))
+        
+        try:
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+            # Try to set permissions to allow writes from multiple users/containers
+            try: os.chmod(self.storage_dir, 0o777)
+            except: pass
+        except Exception:
+            self.storage_dir = Path("/tmp/batch_status")
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+
+        self.events_file = self.storage_dir / "event_log.json"
+        self.status_file = self.storage_dir / "batch_status_v2.json"
+        print(f"[INFO] FileBasedStatusDB using storage: {self.storage_dir}")
+
+    def _load_json(self, file_path):
+        if not file_path.exists(): return [] if "event" in file_path.name else {}
+        try:
+            with open(file_path, 'r') as f: return json.load(f)
+        except: return [] if "event" in file_path.name else {}
+
+    def _save_json(self, file_path, data):
+        try:
+            temp_file = file_path.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            temp_file.replace(file_path)
+            try: os.chmod(file_path, 0o777)
+            except: pass
+        except Exception as e:
+            print(f"[ERROR] Failed to save status: {e}")
+
+    def log_event(self, dag_name, task_name, model_name, run_id, event_type, status=None, message=None, metadata=None):
+        events = self._load_json(self.events_file)
+        event = {
+            'dag_name': dag_name,
+            'task_name': task_name,
+            'model_name': model_name,
+            'run_id': run_id,
+            'event_type': event_type,
+            'status': status,
+            'message': message,
+            'metadata': metadata,
+            'created_at': datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
+        }
+        events.append(event)
+        # Keep only last 500 events to avoid file bloating
+        if len(events) > 500: events = events[-500:]
+        self._save_json(self.events_file, events)
+        
+        # Also update a snapshot status for convenience
+        all_status = self._load_json(self.status_file)
+        status_id = f"{dag_name}_{task_name}_{model_name}_{run_id}"
+        all_status[status_id] = event
+        self._save_json(self.status_file, all_status)
+        print(f"[INFO] Event logged locally: {event_type} for {model_name}")
+
+    def get_status(self, dag_name, run_id=None):
+        all_status = self._load_json(self.status_file)
+        results = []
+        for sid, data in all_status.items():
+            if data.get('dag_name') == dag_name:
+                if run_id is None or data.get('run_id') == run_id:
+                    results.append(data)
+        return results
+
+    def get_events(self, dag_name, run_id=None, limit=200):
+        events = self._load_json(self.events_file)
+        results = []
+        for event in reversed(events): # Newest first
+            if event.get('dag_name') == dag_name:
+                if run_id is None or event.get('run_id') == run_id:
+                    results.append(event)
+            if len(results) >= limit: break
+        return results
+
+    def cleanup_old_events(self):
         pass
 
-# Try to initialize, but fall back to NoOp if it fails
+# Initialize status_db - handle missing GCP credentials or Firestore failure
+db_url = os.getenv("STATUS_DB")
+
+# Try to initialize Firestore, but fall back to FileBased if it fails
 try:
     status_db = CryptoBatchDB(db_url)
-    # Verify it actually initialized (check if firestore is available)
     if not hasattr(status_db, '_firestore_available') or not status_db._firestore_available:
-        status_db = NoOpStatusDB()
-except (Exception, google_auth_exceptions.DefaultCredentialsError) as e:
-    # If GCP credentials are missing, create a no-op instance
-    import sys
-    # Suppress the exception from being printed to stderr during import
-    # This prevents Airflow from treating it as an import error
-    status_db = NoOpStatusDB()
+        print("[WARNING] Firestore not available. Falling back to FileBasedStatusDB.")
+        status_db = FileBasedStatusDB()
+except Exception as e:
+    print(f"[WARNING] StatusDB initialization failed ({e}). Falling back to FileBasedStatusDB.")
+    status_db = FileBasedStatusDB()

@@ -359,6 +359,14 @@ Examples:
     except Exception as e:
         print(f"Warning: Failed to log status to DB: {e}")
 
+    # Create success marker file for SSH polling
+    try:
+        Path("_SUCCESS").touch()
+        print("Created _SUCCESS marker file")
+    except Exception as e:
+        print(f"Warning: Failed to create _SUCCESS file: {e}")
+
+
 
 if __name__ == "__main__":
     main()

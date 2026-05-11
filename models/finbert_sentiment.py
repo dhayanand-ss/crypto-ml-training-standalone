@@ -98,18 +98,25 @@ class FinBERTSentimentAnalyzer:
     - Training: GRPO (Group Relative Policy Optimization) with LoRA
     """
     
+
+    def verify_cuda(self):
+        """Perform a sanity check on CUDA to ensure kernels can execute."""
+        if not torch.cuda.is_available():
+            return False
+        try:
+            # Try a simple operation to check if kernel images are available
+            x = torch.zeros(1).cuda()
+            y = x + 1
+            torch.cuda.synchronize()
+            return True
+        except Exception as e:
+            print(f"Warning: CUDA found but failed sanity check: {e}")
+            print("Falling back to CPU for stability.")
+            return False
+
     def __init__(self, model_name="ProsusAI/finbert", max_length=512, lora_config=None, lora_rank=4):
         """
         Initialize FinBERT analyzer with LoRA adapters (COMPULSORY)
-        
-        Args:
-            model_name: HuggingFace model name (default: "ProsusAI/finbert")
-            max_length: Maximum sequence length for tokenization
-            lora_config: LoRA configuration (if None, uses default with lora_rank)
-            lora_rank: Rank of LoRA matrices (default: 4, used if lora_config is None)
-        
-        Raises:
-            ImportError: If peft library is not available
         """
         if not PEFT_AVAILABLE:
             raise ImportError(
@@ -119,7 +126,13 @@ class FinBERTSentimentAnalyzer:
         
         self.model_name = model_name
         self.max_length = max_length
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Robust device selection
+        if self.verify_cuda():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+            
         self.use_lora = True  # Always True - LoRA is compulsory
         
         print(f"Loading FinBERT model: {model_name}")
@@ -132,23 +145,22 @@ class FinBERTSentimentAnalyzer:
         # Load model
         self.model = AutoModelForSequenceClassification.from_pretrained(
             model_name,
-            num_labels=3  # Negative, Neutral, Positive (maps to Sell, Hold, Buy)
+            num_labels=3
         )
         
-        # Apply LoRA adapters (COMPULSORY)
+        # Apply LoRA adapters
         if lora_config is None:
             lora_config = LoraConfig(
-                r=lora_rank,  # rank of the low-rank matrices
-                lora_alpha=32,  # scaling factor
-                target_modules=["query", "key", "value"],  # layers to apply LoRA
+                r=lora_rank,
+                lora_alpha=32,
+                target_modules=["query", "key", "value"],
                 lora_dropout=0.1,
                 bias="none",
-                task_type="SEQ_CLS"  # sequence classification
+                task_type="SEQ_CLS"
             )
         
         self.model = get_peft_model(self.model, lora_config)
         print(f"LoRA adapters applied to model (rank={lora_config.r})")
-        print(f"Trainable parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad):,}")
         
         self.model.to(self.device)
         self.model.eval()

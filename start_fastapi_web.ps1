@@ -8,7 +8,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 # Set environment variables for web access
 $env:PORT = "8000"
 $env:HOST = "0.0.0.0"  # Listen on all network interfaces
-$env:MLFLOW_TRACKING_URI = "http://localhost:5000"
+
 
 # Get local IP address
 $ipAddress = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1).IPAddress

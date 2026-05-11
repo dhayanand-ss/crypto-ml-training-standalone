@@ -30,16 +30,25 @@ def main():
     run_id = os.getenv("AIRFLOW_CTX_DAG_RUN_ID")
     dag_id = os.getenv("AIRFLOW_CTX_DAG_ID")
     
-    if not run_id or not dag_id:
+    # Check if we have an instance_id from command line
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--instance_id", help="Vast.ai instance ID (manual override)")
+    args = parser.parse_known_args()[0]
+    
+    manual_instance_id = args.instance_id
+    
+    if not run_id and not manual_instance_id:
         # Fallback for manual testing
         run_id = os.getenv("AIRFLOW_RUN_ID")
         dag_id = os.getenv("AIRFLOW_DAG_ID")
         
-    if not run_id:
-        logger.error("AIRFLOW_CTX_DAG_RUN_ID not set")
+    if not run_id and not manual_instance_id:
+        logger.error("Neither AIRFLOW_CTX_DAG_RUN_ID nor --instance_id provided")
         sys.exit(1)
         
-    logger.info(f"Looking up status for DAG: {dag_id}, Run: {run_id}")
+    if run_id:
+        logger.info(f"Looking up status for DAG: {dag_id}, Run: {run_id}")
     
     # Get status from DB
     try:
@@ -52,8 +61,8 @@ def main():
         
         trl_status = next((item for item in status_list if item.get('model_name') == 'trl'), None)
         
-        instance_id = None
-        if trl_status:
+        instance_id = manual_instance_id
+        if not instance_id and trl_status:
             metadata = trl_status.get('metadata', {})
             instance_id = metadata.get('instance_id')
             
@@ -82,8 +91,13 @@ def main():
         local_base = project_root / "models"
         local_base.mkdir(parents=True, exist_ok=True)
         
-        # We target the parent 'models' folder because 'finbert' is the folder name inside
-        remote_path = "/workspace/crypto-ml-training-standalone/models/finbert"
+        github_repo = os.getenv("VASTAI_GITHUB_REPO", "")
+        if github_repo:
+            repo_name = github_repo.split("/")[-1].replace(".git", "")
+        else:
+            repo_name = "crypto-ml-training"
+            
+        remote_path = f"/workspace/{repo_name}/models/finbert"
         local_target = str(local_base) 
         
         # 'vastai copy' syntax: src dst

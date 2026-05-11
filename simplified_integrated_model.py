@@ -38,13 +38,7 @@ except ImportError:
     TRAIN_UTILS_AVAILABLE = False
     print("Warning: train_utils not available. Some features will be disabled.")
 
-# MLflow integration
-try:
-    import mlflow
-    MLFLOW_AVAILABLE = True
-except ImportError:
-    MLFLOW_AVAILABLE = False
-    print("Warning: mlflow not available. MLflow logging will be disabled.")
+
 
 class SimplifiedIntegratedModel:
     """Simplified integrated model that combines LightGBM, Time Series Transformer, and FinBERT"""

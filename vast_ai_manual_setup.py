@@ -37,7 +37,7 @@ def generate_vast_ai_commands():
     print("     --disk 30 \\")
     print("     --ssh \\")
     print("     --on-demand \\")
-    print("     --onstart 'set -e && cd /workspace && [ ! -d crypto-ml-training-standalone ] && git clone https://github.com/dhayanand-ss/crypto-ml-training-standalone-clean.git crypto-ml-training-standalone || true && cd crypto-ml-training-standalone && pip install -q -r requirements.txt && python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 --batch_size 4 --lora_rank 4 --window_hours 12 --threshold 0.005 --clip_eps 0.2 --kl_coef 0.1 --lr 2e-5'")
+    print("     --onstart 'set -e && cd /workspace && [ ! -d crypto-ml-training-standalone ] && git clone https://github.com/dhayanand-ss/crypto-ml-training-standalone.git crypto-ml-training-standalone || true && cd crypto-ml-training-standalone && pip install -q -r requirements.txt && python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 --batch_size 4 --lora_rank 4 --window_hours 12 --threshold 0.005 --clip_eps 0.2 --kl_coef 0.1 --lr 2e-5'")
     print()
     print("5. Monitor instance:")
     print("   vastai show instance INSTANCE_ID")
@@ -52,7 +52,7 @@ def generate_vast_ai_commands():
     print("5. Set disk: 30 GB")
     print("6. In 'On Start' command, paste:")
     print()
-    onstart_cmd = """set -e && cd /workspace && [ ! -d crypto-ml-training-standalone ] && git clone https://github.com/dhayanand-ss/crypto-ml-training-standalone-clean.git crypto-ml-training-standalone || true && cd crypto-ml-training-standalone && pip install -q -r requirements.txt && python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 --batch_size 4 --lora_rank 4 --window_hours 12 --threshold 0.005 --clip_eps 0.2 --kl_coef 0.1 --lr 2e-5"""
+    onstart_cmd = """set -e && cd /workspace && [ ! -d crypto-ml-training-standalone ] && git clone https://github.com/dhayanand-ss/crypto-ml-training-standalone.git crypto-ml-training-standalone || true && cd crypto-ml-training-standalone && pip install -q -r requirements.txt && python -m utils.trainer.trl_train --coin BTCUSDT --epochs 10 --batch_size 4 --lora_rank 4 --window_hours 12 --threshold 0.005 --clip_eps 0.2 --kl_coef 0.1 --lr 2e-5"""
     print(f"   {onstart_cmd}")
     print()
     print("7. Click 'Create' and wait for instance to start")

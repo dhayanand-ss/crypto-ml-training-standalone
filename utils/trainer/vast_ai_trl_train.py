@@ -119,10 +119,13 @@ def build_trl_startup_command(
     if export_cmds:
         cmd_parts.append(export_cmds)
     
+    repo_url = os.getenv("VASTAI_GITHUB_REPO", "https://github.com/dhayanand-ss/crypto-ml-training-standalone.git")
+    repo_branch = os.getenv("VASTAI_GITHUB_BRANCH", "main")
+    
     cmd_parts.extend([
         "mkdir -p /workspace",
         "cd /workspace",
-        f"if [ ! -d crypto-ml-training-standalone ]; then git clone https://github.com/dhayanand-ss/crypto-ml-training-standalone-clean.git crypto-ml-training-standalone; fi",
+        f"if [ ! -d crypto-ml-training-standalone ]; then git clone -b {repo_branch} {repo_url} crypto-ml-training-standalone; fi",
         "cd crypto-ml-training-standalone",
         "pip install -q --upgrade pip || true",
         "pip install -q -r requirements.txt || echo 'Warning: requirements.txt not found'",
